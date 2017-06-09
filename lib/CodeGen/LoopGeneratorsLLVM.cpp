@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polly/CodeGen/LoopGenerators.h"
+#include "polly/CodeGen/LoopGeneratorsLLVM.h"
 #include "polly/ScopDetection.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/DataLayout.h"
@@ -24,130 +25,16 @@ using namespace llvm;
 using namespace polly;
 
 static cl::opt<int>
-    PollyNumThreads("polly-num-threads",
+    PollyNumThreads("polly-num-threads-llvm",
                     cl::desc("Number of threads to use (0 = auto)"), cl::Hidden,
                     cl::init(0));
 
-// We generate a loop of either of the following structures:
-//
-//              BeforeBB                      BeforeBB
-//                 |                             |
-//                 v                             v
-//              GuardBB                      PreHeaderBB
-//              /      |                         |   _____
-//     __  PreHeaderBB  |                        v  \/    |
-//    /  \    /         |                     HeaderBB  latch
-// latch  HeaderBB      |                        |\       |
-//    \  /    \         /                        | \------/
-//     <       \       /                         |
-//              \     /                          v
-//              ExitBB                         ExitBB
-//
-// depending on whether or not we know that it is executed at least once. If
-// not, GuardBB checks if the loop is executed at least once. If this is the
-// case we branch to PreHeaderBB and subsequently to the HeaderBB, which
-// contains the loop iv 'polly.indvar', the incremented loop iv
-// 'polly.indvar_next' as well as the condition to check if we execute another
-// iteration of the loop. After the loop has finished, we branch to ExitBB.
-Value *polly::createLoop(Value *LB, Value *UB, Value *Stride,
-                         PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
-                         DominatorTree &DT, BasicBlock *&ExitBB,
-                         ICmpInst::Predicate Predicate,
-                         ScopAnnotator *Annotator, bool Parallel,
-                         bool UseGuard) {
-  Function *F = Builder.GetInsertBlock()->getParent();
-  LLVMContext &Context = F->getContext();
-
-  assert(LB->getType() == UB->getType() && "Types of loop bounds do not match");
-  IntegerType *LoopIVType = dyn_cast<IntegerType>(UB->getType());
-  assert(LoopIVType && "UB is not integer?");
-
-  BasicBlock *BeforeBB = Builder.GetInsertBlock();
-  BasicBlock *GuardBB =
-      UseGuard ? BasicBlock::Create(Context, "polly.loop_if", F) : nullptr;
-  BasicBlock *HeaderBB = BasicBlock::Create(Context, "polly.loop_header", F);
-  BasicBlock *PreHeaderBB =
-      BasicBlock::Create(Context, "polly.loop_preheader", F);
-
-  // Update LoopInfo
-  Loop *OuterLoop = LI.getLoopFor(BeforeBB);
-  Loop *NewLoop = new Loop();
-
-  if (OuterLoop)
-    OuterLoop->addChildLoop(NewLoop);
-  else
-    LI.addTopLevelLoop(NewLoop);
-
-  if (OuterLoop) {
-    if (GuardBB)
-      OuterLoop->addBasicBlockToLoop(GuardBB, LI);
-    OuterLoop->addBasicBlockToLoop(PreHeaderBB, LI);
-  }
-
-  NewLoop->addBasicBlockToLoop(HeaderBB, LI);
-
-  // Notify the annotator (if present) that we have a new loop, but only
-  // after the header block is set.
-  if (Annotator)
-    Annotator->pushLoop(NewLoop, Parallel);
-
-  // ExitBB
-  ExitBB = SplitBlock(BeforeBB, &*Builder.GetInsertPoint(), &DT, &LI);
-  ExitBB->setName("polly.loop_exit");
-
-  // BeforeBB
-  if (GuardBB) {
-    BeforeBB->getTerminator()->setSuccessor(0, GuardBB);
-    DT.addNewBlock(GuardBB, BeforeBB);
-
-    // GuardBB
-    Builder.SetInsertPoint(GuardBB);
-    Value *LoopGuard;
-    LoopGuard = Builder.CreateICmp(Predicate, LB, UB);
-    LoopGuard->setName("polly.loop_guard");
-    Builder.CreateCondBr(LoopGuard, PreHeaderBB, ExitBB);
-    DT.addNewBlock(PreHeaderBB, GuardBB);
-  } else {
-    BeforeBB->getTerminator()->setSuccessor(0, PreHeaderBB);
-    DT.addNewBlock(PreHeaderBB, BeforeBB);
-  }
-
-  // PreHeaderBB
-  Builder.SetInsertPoint(PreHeaderBB);
-  Builder.CreateBr(HeaderBB);
-
-  // HeaderBB
-  DT.addNewBlock(HeaderBB, PreHeaderBB);
-  Builder.SetInsertPoint(HeaderBB);
-  PHINode *IV = Builder.CreatePHI(LoopIVType, 2, "polly.indvar");
-  IV->addIncoming(LB, PreHeaderBB);
-  Stride = Builder.CreateZExtOrBitCast(Stride, LoopIVType);
-  Value *IncrementedIV = Builder.CreateNSWAdd(IV, Stride, "polly.indvar_next");
-  Value *LoopCondition;
-  UB = Builder.CreateSub(UB, Stride, "polly.adjust_ub");
-  LoopCondition = Builder.CreateICmp(Predicate, IV, UB);
-  LoopCondition->setName("polly.loop_cond");
-
-  // Create the loop latch and annotate it as such.
-  BranchInst *B = Builder.CreateCondBr(LoopCondition, HeaderBB, ExitBB);
-  if (Annotator)
-    Annotator->annotateLoopLatch(B, NewLoop, Parallel);
-
-  IV->addIncoming(IncrementedIV, HeaderBB);
-  if (GuardBB)
-    DT.changeImmediateDominator(ExitBB, GuardBB);
-  else
-    DT.changeImmediateDominator(ExitBB, HeaderBB);
-
-  // The loop body should be added here.
-  Builder.SetInsertPoint(HeaderBB->getFirstNonPHI());
-  return IV;
-}
-
-Value *ParallelLoopGenerator::createParallelLoop(
+Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     Value *LB, Value *UB, Value *Stride, SetVector<Value *> &UsedValues,
     ValueMapT &Map, BasicBlock::iterator *LoopBody) {
   Function *SubFn;
+
+  printf("LLVM-IR createParallelLoop used.\n");
 
   AllocaInst *Struct = storeValuesIntoStruct(UsedValues);
   BasicBlock::iterator BeforeLoop = Builder.GetInsertPoint();
@@ -175,11 +62,11 @@ Value *ParallelLoopGenerator::createParallelLoop(
   return IV;
 }
 
-void ParallelLoopGenerator::createCallSpawnThreads(Value *SubFn,
+void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *SubFn,
                                                    Value *SubFnParam, Value *LB,
                                                    Value *UB, Value *Stride) {
   const std::string Name = "GOMP_parallel_loop_runtime_start";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
+  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -204,10 +91,10 @@ void ParallelLoopGenerator::createCallSpawnThreads(Value *SubFn,
   Builder.CreateCall(F, Args);
 }
 
-Value *ParallelLoopGenerator::createCallGetWorkItem(Value *LBPtr,
+Value *ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *LBPtr,
                                                     Value *UBPtr) {
   const std::string Name = "GOMP_loop_runtime_next";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
+  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -225,9 +112,9 @@ Value *ParallelLoopGenerator::createCallGetWorkItem(Value *LBPtr,
   return Return;
 }
 
-void ParallelLoopGenerator::createCallJoinThreads() {
+void ParallelLoopGeneratorLLVM::createCallJoinThreads() {
   const std::string Name = "GOMP_parallel_end";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
+  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -241,9 +128,9 @@ void ParallelLoopGenerator::createCallJoinThreads() {
   Builder.CreateCall(F, {});
 }
 
-void ParallelLoopGenerator::createCallCleanupThread() {
+void ParallelLoopGeneratorLLVM::createCallCleanupThread() {
   const std::string Name = "GOMP_loop_end_nowait";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
+  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -257,7 +144,7 @@ void ParallelLoopGenerator::createCallCleanupThread() {
   Builder.CreateCall(F, {});
 }
 
-Function *ParallelLoopGenerator::createSubFnDefinition() {
+Function *ParallelLoopGeneratorLLVM::createSubFnDefinition() {
   Function *F = Builder.GetInsertBlock()->getParent();
   std::vector<Type *> Arguments(1, Builder.getInt8PtrTy());
   FunctionType *FT = FunctionType::get(Builder.getVoidTy(), Arguments, false);
@@ -280,7 +167,7 @@ Function *ParallelLoopGenerator::createSubFnDefinition() {
 }
 
 AllocaInst *
-ParallelLoopGenerator::storeValuesIntoStruct(SetVector<Value *> &Values) {
+ParallelLoopGeneratorLLVM::storeValuesIntoStruct(SetVector<Value *> &Values) {
   SmallVector<Type *, 8> Members;
 
   for (Value *V : Values)
@@ -307,7 +194,7 @@ ParallelLoopGenerator::storeValuesIntoStruct(SetVector<Value *> &Values) {
   return Struct;
 }
 
-void ParallelLoopGenerator::extractValuesFromStruct(
+void ParallelLoopGeneratorLLVM::extractValuesFromStruct(
     SetVector<Value *> OldValues, Type *Ty, Value *Struct, ValueMapT &Map) {
   for (unsigned i = 0; i < OldValues.size(); i++) {
     Value *Address = Builder.CreateStructGEP(Ty, Struct, i);
@@ -317,7 +204,7 @@ void ParallelLoopGenerator::extractValuesFromStruct(
   }
 }
 
-Value *ParallelLoopGenerator::createSubFn(Value *Stride, AllocaInst *StructData,
+Value *ParallelLoopGeneratorLLVM::createSubFn(Value *Stride, AllocaInst *StructData,
                                           SetVector<Value *> Data,
                                           ValueMapT &Map, Function **SubFnPtr) {
   BasicBlock *PrevBB, *HeaderBB, *ExitBB, *CheckNextBB, *PreHeaderBB, *AfterBB;

@@ -11,8 +11,8 @@
 // as LLVM-IR.
 //
 //===----------------------------------------------------------------------===//
-#ifndef POLLY_LOOP_GENERATORS_GNU_H
-#define POLLY_LOOP_GENERATORS_GNU_H
+#ifndef POLLY_LOOP_GENERATORS_LLVM_H
+#define POLLY_LOOP_GENERATORS_LLVM_H
 
 #include "polly/CodeGen/IRBuilder.h"
 #include "polly/Support/ScopHelper.h"
@@ -28,34 +28,6 @@ class BasicBlock;
 
 namespace polly {
 using namespace llvm;
-
-/// Create a scalar do/for-style loop.
-///
-/// @param LowerBound The starting value of the induction variable.
-/// @param UpperBound The upper bound of the induction variable.
-/// @param Stride     The value by which the induction variable is incremented.
-///
-/// @param Builder    The builder used to create the loop.
-/// @param P          A pointer to the pass that uses this function. It is used
-///                   to update analysis information.
-/// @param LI         The loop info for the current function
-/// @param DT         The dominator tree we need to update
-/// @param ExitBlock  The block the loop will exit to.
-/// @param Predicate  The predicate used to generate the upper loop bound.
-/// @param Annotator  This function can (optionally) take a ScopAnnotator which
-///                   annotates loops and alias information in the SCoP.
-/// @param Parallel   If this loop should be marked parallel in the Annotator.
-/// @param UseGuard   Create a guard in front of the header to check if the
-///                   loop is executed at least once, otherwise just assume it.
-///
-/// @return Value*    The newly created induction variable for this loop.
-
-Value *createLoop(Value *LowerBound, Value *UpperBound, Value *Stride,
-                  PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
-                  DominatorTree &DT, BasicBlock *&ExitBlock,
-                  ICmpInst::Predicate Predicate,
-                  ScopAnnotator *Annotator = NULL, bool Parallel = false,
-                  bool UseGuard = true);
 
 /// The ParallelLoopGenerator allows to create parallelized loops
 ///
@@ -97,10 +69,10 @@ Value *createLoop(Value *LowerBound, Value *UpperBound, Value *Stride,
 ///     }
 ///     cleanup_thread();
 ///   }
-class ParallelLoopGenerator {
+class ParallelLoopGeneratorLLVM { // TODO: Only for testing.
 public:
   /// Create a parallel loop generator for the current function.
-  ParallelLoopGenerator(PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
+  ParallelLoopGeneratorLLVM(PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
                         DominatorTree &DT, const DataLayout &DL)
       : Builder(Builder), P(P), LI(LI), DT(DT), DL(DL),
         LongType(
@@ -216,17 +188,6 @@ public:
   Value *createSubFn(Value *Stride, AllocaInst *Struct,
                      SetVector<Value *> UsedValues, ValueMapT &VMap,
                      Function **SubFn);
-};
-
-class ParallelLoopGeneratorGNU: public ParallelLoopGenerator {
-  // TODO: Remove. Only for testing.
-
-public:
-  /// Create a parallel loop generator for the current function.
-  ParallelLoopGeneratorGNU(PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
-                        DominatorTree &DT, const DataLayout &DL)
-      : ParallelLoopGenerator(Builder, P, LI, DT, DL) {}
-
 };
 } // end namespace polly
 #endif

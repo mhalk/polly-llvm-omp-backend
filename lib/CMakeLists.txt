@@ -38,6 +38,7 @@ add_polly_library(Polly
   CodeGen/BlockGenerators.cpp
   ${ISL_CODEGEN_FILES}
   CodeGen/LoopGenerators.cpp
+  CodeGen/LoopGeneratorsLLVM.cpp
   CodeGen/IRBuilder.cpp
   CodeGen/Utils.cpp
   CodeGen/RuntimeDebugBuilder.cpp

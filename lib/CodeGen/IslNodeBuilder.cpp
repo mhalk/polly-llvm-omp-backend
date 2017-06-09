@@ -17,7 +17,7 @@
 #include "polly/CodeGen/CodeGeneration.h"
 #include "polly/CodeGen/IslAst.h"
 #include "polly/CodeGen/IslExprBuilder.h"
-#include "polly/CodeGen/LoopGenerators.h"
+#include "polly/CodeGen/LoopGeneratorsLLVM.h"
 #include "polly/CodeGen/RuntimeDebugBuilder.h"
 #include "polly/CodeGen/Utils.h"
 #include "polly/Config/config.h"
@@ -622,7 +622,7 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
   }
 
   ValueMapT NewValues;
-  ParallelLoopGenerator ParallelLoopGen(Builder, P, LI, DT, DL);
+  ParallelLoopGeneratorLLVM ParallelLoopGen(Builder, P, LI, DT, DL);
 
   IV = ParallelLoopGen.createParallelLoop(ValueLB, ValueUB, ValueInc,
                                           SubtreeValues, NewValues, &LoopBody);

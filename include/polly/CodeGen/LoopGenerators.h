@@ -124,11 +124,11 @@ public:
   ///                  instructions that form the actual loop body.
   ///
   /// @return The newly created induction variable for this loop.
-  Value *createParallelLoop(Value *LB, Value *UB, Value *Stride,
+  virtual Value *createParallelLoop(Value *LB, Value *UB, Value *Stride,
                             SetVector<Value *> &Values, ValueMapT &VMap,
                             BasicBlock::iterator *LoopBody);
 
-private:
+protected:
   /// The IR builder we use to create instructions.
   PollyIRBuilder &Builder;
 
@@ -163,11 +163,11 @@ public:
   /// @param LB         The lower bound for the loop we parallelize.
   /// @param UB         The upper bound for the loop we parallelize.
   /// @param Stride     The stride of the loop we parallelize.
-  void createCallSpawnThreads(Value *SubFn, Value *SubFnParam, Value *LB,
+  virtual void createCallSpawnThreads(Value *SubFn, Value *SubFnParam, Value *LB,
                               Value *UB, Value *Stride);
 
   /// Create a runtime library call to join the worker threads.
-  void createCallJoinThreads();
+  virtual void createCallJoinThreads();
 
   /// Create a runtime library call to get the next work item.
   ///
@@ -175,13 +175,13 @@ public:
   /// @param UBPtr A pointer value to store the work item end in.
   ///
   /// @returns A true value if the work item is not empty.
-  Value *createCallGetWorkItem(Value *LBPtr, Value *UBPtr);
+  virtual Value *createCallGetWorkItem(Value *LBPtr, Value *UBPtr);
 
   /// Create a runtime library call to allow cleanup of the thread.
   ///
   /// @note This function is called right before the thread will exit the
   ///       subfunction and only if the runtime system depends depends on it.
-  void createCallCleanupThread();
+  virtual void createCallCleanupThread();
 
   /// Create a struct for all @p Values and store them in there.
   ///
@@ -213,7 +213,7 @@ public:
   /// @param SubFn  The newly created subfunction is returned here.
   ///
   /// @return The newly created induction variable.
-  Value *createSubFn(Value *Stride, AllocaInst *Struct,
+  virtual Value *createSubFn(Value *Stride, AllocaInst *Struct,
                      SetVector<Value *> UsedValues, ValueMapT &VMap,
                      Function **SubFn);
 };

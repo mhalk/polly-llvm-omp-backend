@@ -626,37 +626,22 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
   }
 
   ValueMapT NewValues;
+  ParallelLoopGenerator* ParallelLoopGen;
 
-  // TODO: Find better solution -- but: problems using "switch-stmt"
-
-  if (PollyOmpFlavor == 0) {
-    printf("PollyOmpFlavor: GCC.\n");
-    ParallelLoopGenerator ParallelLoopGen(Builder, P, LI, DT, DL);
-    IV = ParallelLoopGen.createParallelLoop(ValueLB, ValueUB, ValueInc,
-                                            SubtreeValues, NewValues, &LoopBody);
-  } else {
-    printf("PollyOmpFlavor: LLVM.\n");
-    ParallelLoopGeneratorLLVM ParallelLoopGen(Builder, P, LI, DT, DL);
-    IV = ParallelLoopGen.createParallelLoop(ValueLB, ValueUB, ValueInc,
-                                            SubtreeValues, NewValues, &LoopBody);
-  }
-
-  /*  Does not work: cross initialization
   switch (PollyOmpFlavor) {
     case 0:
     default:
       printf("PollyOmpFlavor: GCC.\n");
-      ParallelLoopGenerator ParallelLoopGen(Builder, P, LI, DT, DL);
+      ParallelLoopGen = new ParallelLoopGeneratorGNU(Builder, P, LI, DT, DL);
       break;
     case 1:
       printf("PollyOmpFlavor: LLVM.\n");
-      ParallelLoopGeneratorLLVM ParallelLoopGen(Builder, P, LI, DT, DL);
+      ParallelLoopGen = new ParallelLoopGeneratorLLVM(Builder, P, LI, DT, DL);
       break;
   }
 
-  IV = ParallelLoopGen.createParallelLoop(ValueLB, ValueUB, ValueInc,
+  IV = ParallelLoopGen->createParallelLoop(ValueLB, ValueUB, ValueInc,
                                           SubtreeValues, NewValues, &LoopBody);
-  */
 
   BasicBlock::iterator AfterLoop = Builder.GetInsertPoint();
   Builder.SetInsertPoint(&*LoopBody);

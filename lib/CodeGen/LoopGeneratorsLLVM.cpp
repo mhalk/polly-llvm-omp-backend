@@ -144,66 +144,6 @@ void ParallelLoopGeneratorLLVM::createCallCleanupThread() {
   Builder.CreateCall(F, {});
 }
 
-Function *ParallelLoopGeneratorLLVM::createSubFnDefinition() {
-  Function *F = Builder.GetInsertBlock()->getParent();
-  std::vector<Type *> Arguments(1, Builder.getInt8PtrTy());
-  FunctionType *FT = FunctionType::get(Builder.getVoidTy(), Arguments, false);
-  Function *SubFn = Function::Create(FT, Function::InternalLinkage,
-                                     F->getName() + "_polly_subfn", M);
-
-  // Certain backends (e.g., NVPTX) do not support '.'s in function names.
-  // Hence, we ensure that all '.'s are replaced by '_'s.
-  std::string FunctionName = SubFn->getName();
-  std::replace(FunctionName.begin(), FunctionName.end(), '.', '_');
-  SubFn->setName(FunctionName);
-
-  // Do not run any polly pass on the new function.
-  SubFn->addFnAttr(PollySkipFnAttr);
-
-  Function::arg_iterator AI = SubFn->arg_begin();
-  AI->setName("polly.par.userContext");
-
-  return SubFn;
-}
-
-AllocaInst *
-ParallelLoopGeneratorLLVM::storeValuesIntoStruct(SetVector<Value *> &Values) {
-  SmallVector<Type *, 8> Members;
-
-  for (Value *V : Values)
-    Members.push_back(V->getType());
-
-  // We do not want to allocate the alloca inside any loop, thus we allocate it
-  // in the entry block of the function and use annotations to denote the actual
-  // live span (similar to clang).
-  BasicBlock &EntryBB = Builder.GetInsertBlock()->getParent()->getEntryBlock();
-  Instruction *IP = &*EntryBB.getFirstInsertionPt();
-  StructType *Ty = StructType::get(Builder.getContext(), Members);
-  AllocaInst *Struct = new AllocaInst(Ty, nullptr, "polly.par.userContext", IP);
-
-  // Mark the start of the lifetime for the parameter struct.
-  ConstantInt *SizeOf = Builder.getInt64(DL.getTypeAllocSize(Ty));
-  Builder.CreateLifetimeStart(Struct, SizeOf);
-
-  for (unsigned i = 0; i < Values.size(); i++) {
-    Value *Address = Builder.CreateStructGEP(Ty, Struct, i);
-    Address->setName("polly.subfn.storeaddr." + Values[i]->getName());
-    Builder.CreateStore(Values[i], Address);
-  }
-
-  return Struct;
-}
-
-void ParallelLoopGeneratorLLVM::extractValuesFromStruct(
-    SetVector<Value *> OldValues, Type *Ty, Value *Struct, ValueMapT &Map) {
-  for (unsigned i = 0; i < OldValues.size(); i++) {
-    Value *Address = Builder.CreateStructGEP(Ty, Struct, i);
-    Value *NewValue = Builder.CreateLoad(Address);
-    NewValue->setName("polly.subfunc.arg." + OldValues[i]->getName());
-    Map[OldValues[i]] = NewValue;
-  }
-}
-
 Value *ParallelLoopGeneratorLLVM::createSubFn(Value *Stride, AllocaInst *StructData,
                                           SetVector<Value *> Data,
                                           ValueMapT &Map, Function **SubFnPtr) {

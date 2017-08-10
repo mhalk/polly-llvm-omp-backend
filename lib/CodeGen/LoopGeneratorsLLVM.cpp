@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+// #include "clang/CodeGen/CGOpenMPRuntime.h"
 #include "polly/CodeGen/LoopGenerators.h"
 #include "polly/CodeGen/LoopGeneratorsLLVM.h"
 #include "polly/ScopDetection.h"
@@ -20,6 +21,11 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+
+#define SOME_GLOBAL_TID 1338
+
+// using namespace clang;
+// using namespace CodeGen;
 
 using namespace llvm;
 using namespace polly;
@@ -65,28 +71,40 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *SubFn,
                                                    Value *SubFnParam, Value *LB,
                                                    Value *UB, Value *Stride) {
-  const std::string Name = "GOMP_parallel_loop_runtime_start";
-  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
+  // const std::string Name = "GOMP_parallel_loop_runtime_start";
+
+  const std::string Name = "__kmpc_for_static_init_4";
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
   if (!F) {
     GlobalValue::LinkageTypes Linkage = Function::ExternalLinkage;
 
-    Type *Params[] = {PointerType::getUnqual(FunctionType::get(
-                          Builder.getVoidTy(), Builder.getInt8PtrTy(), false)),
-                      Builder.getInt8PtrTy(),
+    // TODO: Problem getting type of ident_t
+    // in LLVM IR:
+    // ident_t = type { i32, i32, i32, i32, i8* }
+    Type loc = ident_t->getType();
+
+    Type *Params[] = {PointerType::getUnqual(loc),
                       Builder.getInt32Ty(),
-                      LongType,
-                      LongType,
-                      LongType};
+                      Builder.getInt32Ty(),
+                      Builder.getInt32Ty()->getPointerTo(),
+                      Builder.getInt32Ty()->getPointerTo(),
+                      Builder.getInt32Ty()->getPointerTo(),
+                      Builder.getInt32Ty()->getPointerTo(),
+                      Builder.getInt32Ty(),
+                      Builder.getInt32Ty()};
 
     FunctionType *Ty = FunctionType::get(Builder.getVoidTy(), Params, false);
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
   Value *NumberOfThreads = Builder.getInt32(PollyNumThreads);
-  Value *Args[] = {SubFn, SubFnParam, NumberOfThreads, LB, UB, Stride};
+  Value *Args[] = { nullptr,
+                    SOME_GLOBAL_TID,
+                    34, // Static scheduling
+                    nullptr,
+                    LB, UB, Stride, 1, 1};
 
   Builder.CreateCall(F, Args);
 }
@@ -94,7 +112,6 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *SubFn,
 Value *ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *LBPtr,
                                                     Value *UBPtr) {
   const std::string Name = "GOMP_loop_runtime_next";
-  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -113,24 +130,29 @@ Value *ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *LBPtr,
 }
 
 void ParallelLoopGeneratorLLVM::createCallJoinThreads() {
-  const std::string Name = "GOMP_parallel_end";
-  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
+  const std::string Name = "__kmpc_for_static_fini";
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
   if (!F) {
     GlobalValue::LinkageTypes Linkage = Function::ExternalLinkage;
 
-    FunctionType *Ty = FunctionType::get(Builder.getVoidTy(), false);
+    Type loc = type { i32, i32, i32, i32, i8* };
+
+    struct loc =
+
+    Type *Params[] = {PointerType::getUnqual(loc),
+                      Builder.getInt32Ty()};
+
+    FunctionType *Ty = FunctionType::get(Builder.getVoidTy(), Params, false);
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
-  Builder.CreateCall(F, {});
+  Builder.CreateCall(F, {nullptr, SOME_GLOBAL_TID});
 }
 
 void ParallelLoopGeneratorLLVM::createCallCleanupThread() {
   const std::string Name = "GOMP_loop_end_nowait";
-  printf("Called: LLVM %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.

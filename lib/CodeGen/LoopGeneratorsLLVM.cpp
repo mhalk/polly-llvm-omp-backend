@@ -17,7 +17,9 @@
 #include "polly/ScopDetection.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -83,9 +85,13 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *SubFn,
     // TODO: Problem getting type of ident_t
     // in LLVM IR:
     // ident_t = type { i32, i32, i32, i32, i8* }
-    Type loc = ident_t->getType();
+    Type *loc_members[] = {Builder.getInt32Ty(), Builder.getInt32Ty(),
+	                         Builder.getInt32Ty(), Builder.getInt32Ty(),
+	                         Builder.getInt8PtrTy() };
 
-    Type *Params[] = {PointerType::getUnqual(loc),
+    StructType *loc = StructType::get(M->getContext(), loc_members, false);
+
+    Type *Params[] = {PointerType::getUnqual((Type*) loc),
                       Builder.getInt32Ty(),
                       Builder.getInt32Ty(),
                       Builder.getInt32Ty()->getPointerTo(),
@@ -99,12 +105,16 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *SubFn,
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
-  Value *NumberOfThreads = Builder.getInt32(PollyNumThreads);
+  // Value *NumberOfThreads = Builder.getInt32(PollyNumThreads);
   Value *Args[] = { nullptr,
-                    SOME_GLOBAL_TID,
-                    34, // Static scheduling
+                    ConstantInt::get(Builder.getInt32Ty(), SOME_GLOBAL_TID, true),
+                    ConstantInt::get(Builder.getInt32Ty(), 34, true), // Static scheduling
                     nullptr,
-                    LB, UB, Stride, 1, 1};
+                    LB,
+                    UB,
+                    Stride,
+                    ConstantInt::get(Builder.getInt32Ty(), 1, true),
+                    ConstantInt::get(Builder.getInt32Ty(), 1, true) };
 
   Builder.CreateCall(F, Args);
 }
@@ -137,11 +147,17 @@ void ParallelLoopGeneratorLLVM::createCallJoinThreads() {
   if (!F) {
     GlobalValue::LinkageTypes Linkage = Function::ExternalLinkage;
 
-    Type loc = type { i32, i32, i32, i32, i8* };
+    // TODO: Problem getting type of ident_t
+    // in LLVM IR:
+    // ident_t = type { i32, i32, i32, i32, i8* }
+    Type *loc_members[] = {Builder.getInt32Ty(), Builder.getInt32Ty(),
+                           Builder.getInt32Ty(), Builder.getInt32Ty(),
+                           Builder.getInt8PtrTy() };
 
-    struct loc =
+    // StructType *loc = StructType::get(nullptr, loc_members, false);
+    StructType *loc = StructType::get(M->getContext(), loc_members, false);
 
-    Type *Params[] = {PointerType::getUnqual(loc),
+    Type *Params[] = {PointerType::getUnqual((Type*) loc),
                       Builder.getInt32Ty()};
 
     FunctionType *Ty = FunctionType::get(Builder.getVoidTy(), Params, false);

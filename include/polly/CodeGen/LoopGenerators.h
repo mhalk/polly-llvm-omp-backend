@@ -163,7 +163,7 @@ public:
   /// @param LB         The lower bound for the loop we parallelize.
   /// @param UB         The upper bound for the loop we parallelize.
   /// @param Stride     The stride of the loop we parallelize.
-  virtual void createCallSpawnThreads(Value *SubFn, Value *SubFnParam, Value *LB,
+  void createCallSpawnThreads(Value *SubFn, Value *SubFnParam, Value *LB,
                               Value *UB, Value *Stride);
 
   /// Create a runtime library call to join the worker threads.
@@ -175,13 +175,13 @@ public:
   /// @param UBPtr A pointer value to store the work item end in.
   ///
   /// @returns A true value if the work item is not empty.
-  virtual Value *createCallGetWorkItem(Value *LBPtr, Value *UBPtr);
+  Value *createCallGetWorkItem(Value *LBPtr, Value *UBPtr);
 
   /// Create a runtime library call to allow cleanup of the thread.
   ///
   /// @note This function is called right before the thread will exit the
   ///       subfunction and only if the runtime system depends depends on it.
-  virtual void createCallCleanupThread();
+  void createCallCleanupThread();
 
   /// Create a struct for all @p Values and store them in there.
   ///
@@ -213,7 +213,7 @@ public:
   /// @param SubFn  The newly created subfunction is returned here.
   ///
   /// @return The newly created induction variable.
-  virtual Value *createSubFn(Value *Stride, AllocaInst *Struct,
+  Value *createSubFn(Value *Stride, AllocaInst *Struct,
                      SetVector<Value *> UsedValues, ValueMapT &VMap,
                      Function **SubFn);
 };

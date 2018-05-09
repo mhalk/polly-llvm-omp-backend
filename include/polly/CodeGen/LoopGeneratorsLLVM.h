@@ -80,14 +80,17 @@ public:
   Value *createParallelLoop(Value *LB, Value *UB, Value *Stride,
                             SetVector<Value *> &Values, ValueMapT &VMap,
                             BasicBlock::iterator *LoopBody);
-  void createCallSpawnThreads(Value *SubFn, Value *SubFnParam, Value *LB,
-                              Value *UB, Value *Stride);
-  Value *createCallGetWorkItem(Value *LBPtr, Value *UBPtr);
+  void createCallSpawnThreads(Value *srcLocation, Value *microtask);
+  void createCallGetWorkItem(Value *loc, Value *global_tid,
+                             Value *pIsLast, Value *pLB,
+                             Value *pUB, Value *pStride);
   void createCallJoinThreads();
-  void createCallCleanupThread();
+  void createCallCleanupThread(Value *srcLocation, Value *global_tid);
   Value *createSubFn(Value *Stride, AllocaInst *Struct,
                      SetVector<Value *> UsedValues, ValueMapT &VMap,
-                     Function **SubFn);
+                     Function **SubFn, Value *Location);
+
+  Function *createSubFnDefinition();
 
 };
 } // end namespace polly

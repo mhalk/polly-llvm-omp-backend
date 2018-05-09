@@ -631,11 +631,11 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
   switch (PollyOmpFlavor) {
     case 0:
     default:
-      printf("PollyOmpFlavor: GCC.\n");
+      printf("\nPolly-OMP-Flavor: GNU.\n\n");
       ParallelLoopGen = new ParallelLoopGeneratorGNU(Builder, P, LI, DT, DL);
       break;
     case 1:
-      printf("PollyOmpFlavor: LLVM.\n");
+      printf("\nPolly-OMP-Flavor: LLVM.\n\n");
       ParallelLoopGen = new ParallelLoopGeneratorLLVM(Builder, P, LI, DT, DL);
       break;
   }

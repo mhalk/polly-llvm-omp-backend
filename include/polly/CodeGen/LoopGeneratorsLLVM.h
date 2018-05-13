@@ -79,14 +79,14 @@ public:
       LongType(Type::getIntNTy(Builder.getContext(),
         ((DL.getPointerSizeInBits() > 32) ? 32 : DL.getPointerSizeInBits()))) {}
 
-
+/*
   Value *createLoop(Value *LowerBound, Value *UpperBound, Value *Stride,
                     PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
                     DominatorTree &DT, BasicBlock *&ExitBlock,
                     ICmpInst::Predicate Predicate,
                     ScopAnnotator *Annotator = NULL, bool Parallel = false,
                     bool UseGuard = true);
-                    
+                    */
   Value *createParallelLoop(Value *LB, Value *UB, Value *Stride,
                             SetVector<Value *> &Values, ValueMapT &VMap,
                             BasicBlock::iterator *LoopBody);

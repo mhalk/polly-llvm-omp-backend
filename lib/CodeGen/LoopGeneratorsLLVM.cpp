@@ -33,7 +33,7 @@ static cl::opt<int>
                     cl::desc("Number of threads to use (0 = auto)"), cl::Hidden,
                     cl::init(0));
 
-
+/*
 Value *ParallelLoopGeneratorLLVM::createLoop(Value *LB, Value *UB, Value *Stride,
                          PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
                          DominatorTree &DT, BasicBlock *&ExitBB,
@@ -140,7 +140,7 @@ Value *ParallelLoopGeneratorLLVM::createLoop(Value *LB, Value *UB, Value *Stride
   Builder.SetInsertPoint(HeaderBB->getFirstNonPHI());
   return IV;
 }
-
+*/
 
 
 Value *ParallelLoopGeneratorLLVM::createParallelLoop(

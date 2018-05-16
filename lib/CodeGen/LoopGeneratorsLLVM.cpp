@@ -449,6 +449,8 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
   pIsLast = Builder.CreateAlloca(LongType, nullptr, "polly.par.pIsLast");
   pStride = Builder.CreateAlloca(LongType, nullptr, "polly.par.pStride");
 
+  printf("LLVM-IR createSubFn:\t 02.0\n");
+
   /*
   Function::arg_iterator AI = SubFn->arg_begin();
   AI->dump();
@@ -457,7 +459,72 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
   AI++; // TODO: Find "better" solution
   AI->dump();
 
-  printf("LLVM-IR createSubFn:\t 02.0\n");
+  UserContext = Builder.CreateBitCast(
+      &*AI, StructData->getType(), "polly.par.userContext");
+
+  printf("LLVM-IR createSubFn:\t 02.x\n");
+
+  extractValuesFromStruct(Data, StructData->getAllocatedType(), UserContext,
+                          Map);
+  */
+
+  StructType *va_listTy = M->getTypeByName("va_list");
+
+  if(!va_listTy) {
+    Type *loc_members[] = { Builder.getInt8PtrTy() };
+
+    va_listTy = StructType::create(M->getContext(), loc_members, "va_list", false);
+  }
+
+  std::vector<Type *> types(1, Builder.getInt8PtrTy());
+  Function *vaStart = Intrinsic::getDeclaration(M, Intrinsic::vastart, types);
+  Function *vaEnd = Intrinsic::getDeclaration(M, Intrinsic::vaend, types);
+
+  printf("LLVM-IR createSubFn:\t 02.1\n");
+
+  Value *dataPtr = Builder.CreateAlloca(va_listTy, nullptr, "polly.par.DATA");
+  Value *data = Builder.CreateBitCast(dataPtr, Builder.getInt8PtrTy(), "polly.par.DATA.i8");
+
+  dataPtr->dump();
+  data->dump();
+  va_listTy->dump();
+
+  printf("LLVM-IR createSubFn:\t 02.2\n");
+
+  freopen("/home/mhalk/ba/dump/moddump.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
+
+  printf("LLVM-IR createSubFn:\t 02.3\n");
+
+  printf("LLVM-IR createSubFn:\t 02.4\n");
+  Builder.CreateCall(vaStart, data);
+  printf("LLVM-IR createSubFn:\t 02.5\n");
+
+  Value *userContextPtr = Builder.CreateVAArg(data, Builder.getInt8PtrTy());
+
+  printf("LLVM-IR createSubFn:\t 02.6\n");
+
+  userContextPtr->dump();
+
+  UserContext = Builder.CreateBitCast(
+      userContextPtr, StructData->getType(), "polly.par.userContext");
+
+  printf("LLVM-IR createSubFn:\t 02.7\n");
+
+  UserContext->dump();
+
+  extractValuesFromStruct(Data, StructData->getAllocatedType(), UserContext,
+                          Map);
+
+  printf("LLVM-IR createSubFn:\t 02.8\n");
+
+
+
+
+  /*
+
+  Builder.CreateCall(Intrinsic::getDeclaration(M, llvm::Intrinsic::va_start, ArrayRef<Type*>(Tys,numTys)), args);
 
   UserContext = Builder.CreateBitCast(
       &*AI, StructData->getType(), "polly.par.userContext");
@@ -521,6 +588,8 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
   freopen("/home/mhalk/ba/dump/moddump.ll", "w", stderr);
   M->dump();
   freopen("/dev/tty", "w", stderr);
+
+  Builder.CreateCall(vaEnd, data);
 
   Value *hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT, LB, UB, "polly.hasIteration");
   Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);

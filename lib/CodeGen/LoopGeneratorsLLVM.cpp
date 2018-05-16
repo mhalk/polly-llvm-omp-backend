@@ -235,10 +235,9 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   *LoopBody = Builder.GetInsertPoint();
   Builder.SetInsertPoint(&*BeforeLoop);
 
-  // Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt8PtrTy(), "polly.par.userContext"); // Original
-
-  Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt32Ty()->getPointerTo(),
-                                            "polly.par.userContext");
+  // TODO : Experimentieren
+  Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt8PtrTy(), "polly.par.userContext"); // Original
+  // Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt32Ty()->getPointerTo(), "polly.par.userContext"); // kmpc 32bit ?
 
   printf("LLVM-IR createParallelLoop:\t Pos 03.2\n");
 
@@ -267,6 +266,11 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   freopen("/home/mhalk/ba/dump/moddump_endOfcreateParLoop.ll", "w", stderr);
   M->dump();
   freopen("/dev/tty", "w", stderr);
+
+  // Mark the end of the lifetime for the parameter struct.
+  Type *Ty = Struct->getType();
+  ConstantInt *SizeOf = Builder.getInt64(DL.getTypeAllocSize(Ty));
+  Builder.CreateLifetimeEnd(Struct, SizeOf);
 
   IV->dump();
 
@@ -404,11 +408,11 @@ void ParallelLoopGeneratorLLVM::createCallCleanupThread(Value* _loc, Value* _id)
 }
 
 Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
-                  Value *Stride, AllocaInst *Struct,
-                  SetVector<Value *> UsedValues, ValueMapT &VMap,
+                  Value *Stride, AllocaInst *StructData,
+                  SetVector<Value *> Data, ValueMapT &Map,
                   Function **SubFnPtr, Value *Location) {
   BasicBlock *PrevBB, *HeaderBB, *ExitBB, *CheckNextBB, *PreHeaderBB, *AfterBB;
-  Value *LBPtr, *UBPtr, *IDPtr, *ID, *IV, *pIsLast, *pStride;
+  Value *LBPtr, *UBPtr, *UserContext, *IDPtr, *ID, *IV, *pIsLast, *pStride;
   printf("LLVM-IR createSubFn:\tEntry\n");
 
   Function *SubFn = createSubFnDefinition();
@@ -444,6 +448,25 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
   UBPtr = Builder.CreateAlloca(LongType, nullptr, "polly.par.UBPtr");
   pIsLast = Builder.CreateAlloca(LongType, nullptr, "polly.par.pIsLast");
   pStride = Builder.CreateAlloca(LongType, nullptr, "polly.par.pStride");
+
+  /*
+  Function::arg_iterator AI = SubFn->arg_begin();
+  AI->dump();
+  AI++; // TODO: Find "better" solution
+  AI->dump();
+  AI++; // TODO: Find "better" solution
+  AI->dump();
+
+  printf("LLVM-IR createSubFn:\t 02.0\n");
+
+  UserContext = Builder.CreateBitCast(
+      &*AI, StructData->getType(), "polly.par.userContext");
+
+  printf("LLVM-IR createSubFn:\t 02.1\n");
+
+  extractValuesFromStruct(Data, StructData->getAllocatedType(), UserContext,
+                          Map);
+  */
 
   //pLB = Builder.CreateBitCast(LBPtr, Builder.getInt32Ty()->getPointerTo(), "polly.par.LB32");
   //pUB = Builder.CreateBitCast(UBPtr, Builder.getInt32Ty()->getPointerTo(), "polly.par.UB32");

@@ -146,6 +146,11 @@ Value *ParallelLoopGeneratorLLVM::createLoop(Value *LB, Value *UB, Value *Stride
 Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     Value *LB, Value *UB, Value *Stride, SetVector<Value *> &UsedValues,
     ValueMapT &Map, BasicBlock::iterator *LoopBody) {
+
+  freopen("/home/mhalk/ba/dump/moddump_beginOfcreateParLoop.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
+
   Function *SubFn;
   StructType *identTy = M->getTypeByName("ident_t");
 
@@ -165,7 +170,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 
   int size = 23;
   auto arrayType = llvm::ArrayType::get(Builder.getInt8Ty(), size);
-  printf("LLVM-IR createParallelLoop:\t Pos 02,21\n");
+  printf("LLVM-IR createParallelLoop:\t Pos 02.21\n");
   // Global Variable Definitions
   GlobalVariable* theString = new GlobalVariable(*M, arrayType, true,
                           GlobalValue::PrivateLinkage, 0, ".strIdent");
@@ -175,7 +180,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   GlobalValue::PrivateLinkage, nullptr, "dummy.src_loc");
   dummy_src_loc->setAlignment(8);
 
-  printf("LLVM-IR createParallelLoop:\t Pos 02,22\n");
+  printf("LLVM-IR createParallelLoop:\t Pos 02.22\n");
 
   // Constant Definitions
   Constant *locInit_str = ConstantDataArray::getString(M->getContext(),
@@ -183,9 +188,9 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 
   theString->setInitializer(locInit_str);
 
-  printf("LLVM-IR createParallelLoop:\t Pos 02,24\n");
+  printf("LLVM-IR createParallelLoop:\t Pos 02.24\n");
 
-  printf("LLVM-IR createParallelLoop:\t Pos 02,3\n");
+  printf("LLVM-IR createParallelLoop:\t Pos 02.3\n");
   Value *aStringGEP = Builder.CreateInBoundsGEP(arrayType, theString,
     {Builder.getInt32(0), Builder.getInt32(0)});
 
@@ -197,19 +202,42 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 
   dummy_src_loc->setInitializer(locInit_struct);
 
-  printf("LLVM-IR createParallelLoop:\t Pos 03,1\n");
+  printf("LLVM-IR createParallelLoop:\t Pos 03.1\n");
+
+  if (ConstantInt* CI = dyn_cast<ConstantInt>(LB)) {
+    //if (CI->getBitWidth() <= 64) {
+      int constIntValue_LB = CI->getSExtValue();
+      LB = ConstantInt::get(Builder.getInt32Ty(), constIntValue_LB, true);
+    //}
+  } else {
+    printf("Truncating LB!\n");
+    LB = Builder.CreateTrunc(LB, Builder.getInt32Ty(), "polly.truncLB");
+  }
+
+  printf("Truncating UB! AND -- Incrementing by one!\n");
+  UB = Builder.CreateTrunc(UB, Builder.getInt32Ty(), "polly.truncUB");
+  UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, 1), "polly.truncUB.incr");
+
+  if (ConstantInt* CI = dyn_cast<ConstantInt>(Stride)) {
+    //if (CI->getBitWidth() <= 64) {
+      int constIntValue_Stride = CI->getSExtValue();
+      Stride = ConstantInt::get(Builder.getInt32Ty(), constIntValue_Stride, true);
+    //}
+  } else {
+    printf("Truncating Stride!\n");
+    Stride = Builder.CreateTrunc(Stride, Builder.getInt32Ty(), "polly.truncStride");
+  }
 
   BasicBlock::iterator BeforeLoop = Builder.GetInsertPoint();
   Value *IV = createSubFn(LB, UB, Stride, &SubFn, dummy_src_loc);
   *LoopBody = Builder.GetInsertPoint();
   Builder.SetInsertPoint(&*BeforeLoop);
 
-  // UB->dump();
-  // LongType->dump();
+  printf("LLVM-IR createParallelLoop:\t Pos 03.2\n");
 
   // Add one as the upper bound provided by openmp is a < comparison
   // whereas the codegenForSequential function creates a <= comparison.
-  UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, 1));
+  // Value *UBlast = Builder.CreateAdd(UB, ConstantInt::get(LongType, 1));
 
   printf("LLVM-IR createParallelLoop:\t Pos 04\n");
 
@@ -219,7 +247,9 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   printf("LLVM-IR createParallelLoop:\t Pos 05\n");
 
   // TODO: Check if neccessary!
-  //Builder.CreateCall(SubFn, {vZero, vZero});
+  // Value *myPtr1 = Builder.CreateAlloca(LongType, nullptr, "myPtr1");
+  // Value *myPtr2 = Builder.CreateAlloca(LongType, nullptr, "myPtr2");
+  // Builder.CreateCall(SubFn, {myPtr1, myPtr2});
 
   freopen("/home/mhalk/ba/dump/moddump.ll", "w", stderr);
   M->dump();
@@ -230,6 +260,10 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   freopen("/home/mhalk/ba/dump/moddump_endOfcreateParLoop.ll", "w", stderr);
   M->dump();
   freopen("/dev/tty", "w", stderr);
+
+  IV->dump();
+
+  printf("LLVM-IR createParallelLoop:\t EXIT\n");
 
   return IV;
 }
@@ -248,7 +282,7 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *_loc,
     Type *Kmpc_MicroTy = M->getTypeByName("kmpc_micro");
 
     if (!Kmpc_MicroTy) {
-       // Build void (*kmpc_micro)(kmp_int32 *global_tid, kmp_int32 *bound_tid,...)
+       // void (*kmpc_micro)(kmp_int32 *global_tid, kmp_int32 *bound_tid,...)
        Type *MicroParams[] = {Builder.getInt32Ty()->getPointerTo(),
                               Builder.getInt32Ty()->getPointerTo()};
 
@@ -295,8 +329,6 @@ void ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *loc,
   if (!F) {
     GlobalValue::LinkageTypes Linkage = Function::ExternalLinkage;
 
-    // StructType *loc = StructType::get(M->getContext(), loc_members, false);
-
     Type *Params[] = {identTy->getPointerTo(), Builder.getInt32Ty(),
                       Builder.getInt32Ty(),
                       Builder.getInt32Ty()->getPointerTo(),
@@ -312,15 +344,9 @@ void ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *loc,
   printf("LLVM-IR createCallGetWorkItem:\tFunc defined: Pos 05\n");
 
   // Value *NumberOfThreads = Builder.getInt32(PollyNumThreads);
-  Value *Args[] = { loc,
-                    global_tid,
-                    Builder.getInt32(34), // Static scheduling
-                    pIsLast,
-                    pLB,
-                    pUB,
-                    pStride,
-                    Builder.getInt32(1),
-                    ConstantInt::get(Builder.getInt32Ty(), 1, true) };
+  Value *Args[] = { loc, global_tid, Builder.getInt32(34), /* Static schedule */
+                    pIsLast, pLB, pUB, pStride, Builder.getInt32(1),
+                    Builder.getInt32(1) };
 
   printf("LLVM-IR createCallGetWorkItem:\tFunc defined: Pos 07\n");
 
@@ -365,11 +391,12 @@ void ParallelLoopGeneratorLLVM::createCallCleanupThread(Value* _loc, Value* _id)
 Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
                   Value *Stride, Function **SubFnPtr, Value *Location) {
   BasicBlock *PrevBB, *HeaderBB, *ExitBB, *CheckNextBB, *PreHeaderBB, *AfterBB;
-  Value *vLB, *vUB, *vStride, *LBPtr, *UBPtr, *IDPtr,
-    *ID, *IV, *pLB, *pUB, *pIsLast, *pStride;
+  Value *LBPtr, *UBPtr, *IDPtr, *ID, *IV, *pIsLast, *pStride;
   printf("LLVM-IR createSubFn:\tEntry\n");
+
   Function *SubFn = createSubFnDefinition();
   LLVMContext &Context = SubFn->getContext();
+  int align = 4; // ((dyn_cast<ConstantInt>(UB))->getBitWidth() == 32) ? 4 : 8;
 
   // Store the previous basic block.
   PrevBB = Builder.GetInsertBlock();
@@ -398,78 +425,64 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
 
   LBPtr = Builder.CreateAlloca(LongType, nullptr, "polly.par.LBPtr");
   UBPtr = Builder.CreateAlloca(LongType, nullptr, "polly.par.UBPtr");
-  pIsLast = Builder.CreateAlloca(Builder.getInt32Ty(), nullptr, "polly.par.pIsLast");
-  pStride = Builder.CreateAlloca(Builder.getInt32Ty(), nullptr, "polly.par.pStride");
+  pIsLast = Builder.CreateAlloca(LongType, nullptr, "polly.par.pIsLast");
+  pStride = Builder.CreateAlloca(LongType, nullptr, "polly.par.pStride");
 
-  pLB = Builder.CreateBitCast(LBPtr, Builder.getInt32Ty()->getPointerTo(), "polly.par.LB32");
-  pUB = Builder.CreateBitCast(UBPtr, Builder.getInt32Ty()->getPointerTo(), "polly.par.UB32");
+  //pLB = Builder.CreateBitCast(LBPtr, Builder.getInt32Ty()->getPointerTo(), "polly.par.LB32");
+  //pUB = Builder.CreateBitCast(UBPtr, Builder.getInt32Ty()->getPointerTo(), "polly.par.UB32");
 
-  Builder.CreateAlignedLoad(LBPtr, 4, "polly.par.LB");
-  Builder.CreateAlignedLoad(UBPtr, 4, "polly.par.UB");
-  ID = Builder.CreateAlignedLoad(IDPtr, 4, "polly.par.global_tid");
+  //Builder.CreateAlignedLoad(LBPtr, align, "polly.par.LB");
+  //Builder.CreateAlignedLoad(UBPtr, align, "polly.par.UB");
+  ID = Builder.CreateAlignedLoad(IDPtr, align, "polly.par.global_tid");
 
   // *vUB = ConstantInt::get(Builder.getInt32Ty(), 1, true);
   // *vStride = ConstantInt::get(Builder.getInt32Ty(), 42, true);
 
   printf("LLVM-IR createSubFn:\t 02.2\n");
 
-  int constIntValue_LB = -1, constIntValue_UB = -2, constIntValue_Stride = -3;
-
-  if (ConstantInt* CI = dyn_cast<ConstantInt>(LB)) {
-    if (CI->getBitWidth() <= 32) {
-      constIntValue_LB = CI->getSExtValue();
-      vLB = vUB = ConstantInt::get(LongType, constIntValue_LB, true);
-    }
-  }
-
-  if (ConstantInt* CI = dyn_cast<ConstantInt>(UB)) {
-    if (CI->getBitWidth() <= 32) {
-      constIntValue_UB = CI->getSExtValue();
-      // Increment upper bound by one -- difference between KMPC / GNU lib
-      vUB = ConstantInt::get(LongType, constIntValue_UB, true);
-    }
-  }
-
-  if (ConstantInt* CI = dyn_cast<ConstantInt>(Stride)) {
-    if (CI->getBitWidth() <= 32) {
-      constIntValue_Stride = CI->getSExtValue();
-      vStride = ConstantInt::get(LongType, constIntValue_Stride, true);
-    }
-  }
-
-  printf("### -- LB: %d -- UB: %d -- Stride: %d ###\n",
-  constIntValue_LB, constIntValue_UB, constIntValue_Stride);
-
-  Builder.CreateAlignedStore(vLB, pLB, 4);
-  Builder.CreateAlignedStore(vUB, pUB, 4);
-  Builder.CreateAlignedStore(Builder.getInt32(0), pIsLast, 4);
-  Builder.CreateAlignedStore(vStride, pStride, 4);
+  Builder.CreateAlignedStore(LB, LBPtr, align);
+  Builder.CreateAlignedStore(UB, UBPtr, align);
+  Builder.CreateAlignedStore(Builder.getInt32(0), pIsLast, align);
+  Builder.CreateAlignedStore(Stride, pStride, align);
 
   printf("LLVM-IR createSubFn:\t 02.4\n");
+
+  // insert __kmpc_for_static_init_4 HERE
+  createCallGetWorkItem(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
+
+  Builder.SetInsertPoint(HeaderBB);
+
+  LB = Builder.CreateAlignedLoad(LBPtr, align, "polly.indvar.init");
+  UB = Builder.CreateAlignedLoad(UBPtr, align, "polly.indvar.UB");
+
   // Subtract one as the upper bound provided by openmp is a < comparison
   // whereas the codegenForSequential function creates a <= comparison.
+  Value *UB_adj = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
+                         "polly.indvar.UBAdjusted");
+
+  printf("LLVM-IR createSubFn:\t 02.5\n");
+
+  //Value *UB32 = Builder.CreateAlignedLoad(UBPtr, align);
+  //UB->dump();
+  //UB32->dump();
 
   freopen("/home/mhalk/ba/dump/moddump.ll", "w", stderr);
   M->dump();
   freopen("/dev/tty", "w", stderr);
 
-  // insert __kmpc_for_static_init_4 HERE
-  createCallGetWorkItem(Location, ID, pIsLast, pLB, pUB, pStride);
+  Value *selectCond = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT, UB, UB_adj, "polly.threadUB_slt_UB_");
+  UB = Builder.CreateSelect(selectCond, UB, UB_adj);
+  Builder.CreateAlignedStore(UB, UBPtr, align);
 
-  Builder.SetInsertPoint(HeaderBB);
+  //Value *lowBound = Builder.CreateAlignedLoad(LBPtr, align);
 
-  LB = Builder.CreateAlignedLoad(LBPtr, 4, "polly.indvar.init");
-  UB = Builder.CreateAlignedLoad(UBPtr, 4, "polly.indvar.UB");
-  //UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
-  //                       "polly.indvar.UBAdjusted");
+  printf("LLVM-IR createSubFn:\t 02.6\n");
 
-  Value *UB32 = Builder.CreateAlignedLoad(pUB, 4);
-  Value *selectCond = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT, UB32, vUB, "polly.UB_slt_42");
-  Value *cond = Builder.CreateSelect(selectCond, UB32, vUB);
-  Builder.CreateAlignedStore(cond, pUB, 4);
+  freopen("/home/mhalk/ba/dump/moddump.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
 
-  Value *lowBound = Builder.CreateAlignedLoad(pLB, 4);
-  Value *hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT, lowBound, cond, "polly.hasIteration");
+  Value *hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT, LB, UB, "polly.hasIteration");
   Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
 
   //Builder.CreateBr(CheckNextBB);
@@ -491,8 +504,8 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
   // Builder.SetInsertPoint(&*--Builder.GetInsertPoint());
   Builder.SetInsertPoint(PreHeaderBB);
 
-  UB = Builder.CreateSub(UB, ConstantInt::get(LongType, 1),
-                         "polly.par.UBAdjusted");
+  //UB = Builder.CreateSub(UB, ConstantInt::get(LongType, 1),
+  //                       "polly.par.UBAdjusted");
 
   Builder.CreateBr(CheckNextBB);
   Builder.SetInsertPoint(&*--Builder.GetInsertPoint());
@@ -516,6 +529,8 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
 
   Builder.SetInsertPoint(&*LoopBody);
   *SubFnPtr = SubFn;
+
+  IV->dump();
 
   printf("LLVM-IR createSubFn:\tExit.\n");
 

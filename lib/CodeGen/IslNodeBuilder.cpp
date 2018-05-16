@@ -637,6 +637,8 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
       printf("\nPolly-OMP-Flavor: LLVM.\n\n");
       ParallelLoopGen = new ParallelLoopGeneratorLLVM(Builder, P, LI, DT, DL);
 
+
+      /*
       if (ConstantInt* CI = dyn_cast<ConstantInt>(ValueLB)) {
         if (CI->getBitWidth() <= 64) {
           int constIntValue_LB = CI->getSExtValue();
@@ -651,6 +653,8 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
           int constIntValue_UB = CI->getSExtValue() + 1;
           ValueUB = ConstantInt::get(Builder.getInt32Ty(), constIntValue_UB, true);
         }
+      } else {
+        ValueUB =
       }
 
       if (ConstantInt* CI = dyn_cast<ConstantInt>(ValueInc)) {
@@ -659,6 +663,7 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
           ValueInc = ConstantInt::get(Builder.getInt32Ty(), constIntValue_Stride, true);
         }
       }
+      */
 
       break;
   }
@@ -679,6 +684,11 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
   updateValues(NewValues);
   IDToValue[IteratorID] = IV;
 
+  freopen("/home/mhalk/ba/dump/moddump_ISL1.ll", "w", stderr);
+  Module *M = Builder.GetInsertBlock()->getParent()->getParent();
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
+
   ValueMapT NewValuesReverse;
 
   for (auto P : NewValues)
@@ -686,22 +696,47 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
 
   Annotator.addAlternativeAliasBases(NewValuesReverse);
 
+  freopen("/home/mhalk/ba/dump/moddump_ISL2.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
+
   create(Body);
+
+  freopen("/home/mhalk/ba/dump/moddump_ISL3.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
 
   Annotator.resetAlternativeAliasBases();
   // Restore the original values.
   ValueMap = ValueMapCopy;
   IDToValue = IDToValueCopy;
 
+  freopen("/home/mhalk/ba/dump/moddump_ISL4.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
+
   Builder.SetInsertPoint(&*AfterLoop);
   removeSubFuncFromDomTree((*LoopBody).getParent()->getParent(), DT);
+
+  freopen("/home/mhalk/ba/dump/moddump_ISL5.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
 
   for (const Loop *L : Loops)
     OutsideLoopIterations.erase(L);
 
+  freopen("/home/mhalk/ba/dump/moddump_ISL6.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
+
   isl_ast_node_free(For);
   isl_ast_expr_free(Iterator);
   isl_id_free(IteratorID);
+
+  freopen("/home/mhalk/ba/dump/moddump_ISLend.ll", "w", stderr);
+  //Module *M = Builder.GetInsertBlock()->getParent()->getParent();
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
 }
 
 void IslNodeBuilder::createFor(__isl_take isl_ast_node *For) {

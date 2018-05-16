@@ -90,14 +90,16 @@ public:
   Value *createParallelLoop(Value *LB, Value *UB, Value *Stride,
                             SetVector<Value *> &Values, ValueMapT &VMap,
                             BasicBlock::iterator *LoopBody);
-  void createCallSpawnThreads(Value *srcLocation, Value *microtask);
+  void createCallSpawnThreads(Value *srcLocation, Value *microtask,
+                              Value *SubFnParam);
   void createCallGetWorkItem(Value *loc, Value *global_tid,
                              Value *pIsLast, Value *pLB,
                              Value *pUB, Value *pStride);
   void createCallJoinThreads();
   void createCallCleanupThread(Value *srcLocation, Value *global_tid);
-  Value *createSubFn(Value *LB, Value *UB, Value *Stride,
-                      Function **SubFn, Value *Location);
+  Value *createSubFn(Value *LB, Value *UB, Value *Stride, AllocaInst *Struct,
+                     SetVector<Value *> UsedValues, ValueMapT &VMap,
+                     Function **SubFn, Value *Location);
 
   Function *createSubFnDefinition();
 

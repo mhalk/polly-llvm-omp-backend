@@ -153,6 +153,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 
   Function *SubFn;
   StructType *identTy = M->getTypeByName("ident_t");
+  AllocaInst *Struct = storeValuesIntoStruct(UsedValues);
 
   printf("LLVM-IR createParallelLoop used.\n");
 
@@ -217,6 +218,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   printf("Truncating UB! AND -- Incrementing by one!\n");
   UB = Builder.CreateTrunc(UB, Builder.getInt32Ty(), "polly.truncUB");
   UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, 1), "polly.truncUB.incr");
+  //UB->dump();
 
   if (ConstantInt* CI = dyn_cast<ConstantInt>(Stride)) {
     //if (CI->getBitWidth() <= 64) {
@@ -229,9 +231,14 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   }
 
   BasicBlock::iterator BeforeLoop = Builder.GetInsertPoint();
-  Value *IV = createSubFn(LB, UB, Stride, &SubFn, dummy_src_loc);
+  Value *IV = createSubFn(LB, UB, Stride, Struct, UsedValues, Map, &SubFn, dummy_src_loc);
   *LoopBody = Builder.GetInsertPoint();
   Builder.SetInsertPoint(&*BeforeLoop);
+
+  // Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt8PtrTy(), "polly.par.userContext"); // Original
+
+  Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt32Ty()->getPointerTo(),
+                                            "polly.par.userContext");
 
   printf("LLVM-IR createParallelLoop:\t Pos 03.2\n");
 
@@ -242,7 +249,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   printf("LLVM-IR createParallelLoop:\t Pos 04\n");
 
   // Tell the runtime we start a parallel loop
-  createCallSpawnThreads(dummy_src_loc, SubFn);
+  createCallSpawnThreads(dummy_src_loc, SubFn, SubFnParam);
 
   printf("LLVM-IR createParallelLoop:\t Pos 05\n");
 
@@ -269,7 +276,8 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 }
 
 void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *_loc,
-                                                       Value *_microtask) {
+                                                       Value *_microtask,
+                                                       Value *SubFnParam) {
   printf("LLVM-IR createCallSpawnThreads:\tEntry\n");
 
   // const std::string Name = "GOMP_parallel_loop_runtime_start";
@@ -300,7 +308,14 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *_loc,
 
   printf("LLVM-IR createCallSpawnThreads:\tFunc defined: Pos 02\n");
 
-  Value *Args[] = {_loc, Builder.getInt32(0), _microtask};
+  SubFnParam->dump();
+  F->dump();
+
+  Value *Args[] = {_loc, Builder.getInt32(1), _microtask, SubFnParam};
+
+  freopen("/home/mhalk/ba/dump/moddump.ll", "w", stderr);
+  M->dump();
+  freopen("/dev/tty", "w", stderr);
 
   printf("LLVM-IR createCallSpawnThreads:\tFunc defined: Pos 03\n");
 
@@ -389,7 +404,9 @@ void ParallelLoopGeneratorLLVM::createCallCleanupThread(Value* _loc, Value* _id)
 }
 
 Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
-                  Value *Stride, Function **SubFnPtr, Value *Location) {
+                  Value *Stride, AllocaInst *Struct,
+                  SetVector<Value *> UsedValues, ValueMapT &VMap,
+                  Function **SubFnPtr, Value *Location) {
   BasicBlock *PrevBB, *HeaderBB, *ExitBB, *CheckNextBB, *PreHeaderBB, *AfterBB;
   Value *LBPtr, *UBPtr, *IDPtr, *ID, *IV, *pIsLast, *pStride;
   printf("LLVM-IR createSubFn:\tEntry\n");

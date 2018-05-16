@@ -636,35 +636,6 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
     case 1:
       printf("\nPolly-OMP-Flavor: LLVM.\n\n");
       ParallelLoopGen = new ParallelLoopGeneratorLLVM(Builder, P, LI, DT, DL);
-
-
-      /*
-      if (ConstantInt* CI = dyn_cast<ConstantInt>(ValueLB)) {
-        if (CI->getBitWidth() <= 64) {
-          int constIntValue_LB = CI->getSExtValue();
-          // Increment upper bound by one -- difference between KMPC / GNU lib
-          ValueLB = ConstantInt::get(Builder.getInt32Ty(), constIntValue_LB, true);
-        }
-      }
-
-      if (ConstantInt* CI = dyn_cast<ConstantInt>(ValueUB)) {
-        if (CI->getBitWidth() <= 64) {
-          // Increment upper bound by one -- difference between KMPC / GNU lib
-          int constIntValue_UB = CI->getSExtValue() + 1;
-          ValueUB = ConstantInt::get(Builder.getInt32Ty(), constIntValue_UB, true);
-        }
-      } else {
-        ValueUB =
-      }
-
-      if (ConstantInt* CI = dyn_cast<ConstantInt>(ValueInc)) {
-        if (CI->getBitWidth() <= 64) {
-          int constIntValue_Stride = CI->getSExtValue();
-          ValueInc = ConstantInt::get(Builder.getInt32Ty(), constIntValue_Stride, true);
-        }
-      }
-      */
-
       break;
   }
 

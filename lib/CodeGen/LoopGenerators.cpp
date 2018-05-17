@@ -179,7 +179,6 @@ void ParallelLoopGenerator::createCallSpawnThreads(Value *SubFn,
                                                    Value *SubFnParam, Value *LB,
                                                    Value *UB, Value *Stride) {
   const std::string Name = "GOMP_parallel_loop_runtime_start";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -207,7 +206,6 @@ void ParallelLoopGenerator::createCallSpawnThreads(Value *SubFn,
 Value *ParallelLoopGenerator::createCallGetWorkItem(Value *LBPtr,
                                                     Value *UBPtr) {
   const std::string Name = "GOMP_loop_runtime_next";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -227,7 +225,6 @@ Value *ParallelLoopGenerator::createCallGetWorkItem(Value *LBPtr,
 
 void ParallelLoopGenerator::createCallJoinThreads() {
   const std::string Name = "GOMP_parallel_end";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.
@@ -243,7 +240,6 @@ void ParallelLoopGenerator::createCallJoinThreads() {
 
 void ParallelLoopGenerator::createCallCleanupThread() {
   const std::string Name = "GOMP_loop_end_nowait";
-  printf("Called: %s\tin %s\t@L%i\n", __func__, __FILE__, __LINE__);
   Function *F = M->getFunction(Name);
 
   // If F is not available, declare it.

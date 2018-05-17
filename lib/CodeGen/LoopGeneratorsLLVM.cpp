@@ -201,7 +201,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   int numThreads = (PollyNumThreads <= 0) ? 4 : PollyNumThreads;
   numThreads = 4;
 
-  Value *NumberOfThreadsIncr = Builder.getInt32(numThreads + 1); // TODO TODO !!! Need Offset !!!
+  Value *multiplier = Builder.getInt32(numThreads); // TODO TODO !!! Need Offset ???
 
   if (ConstantInt* CI = dyn_cast<ConstantInt>(LB)) {
     //if (CI->getBitWidth() <= 64) {
@@ -210,8 +210,9 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     //}
   } else {
     printf("Truncating LB!\n");
-    LB = Builder.CreateTrunc(LB, LongType, "polly.truncLB.vanilla");
-    LB = Builder.CreateMul(LB, NumberOfThreadsIncr, "polly.par.var_arg.LBx4");
+    LB->dump();
+    //LB = Builder.CreateTrunc(LB, LongType, "polly.truncLB.vanilla");
+    //LB = Builder.CreateMul(LB, multiplier, "polly.par.var_arg.LBx4");
     LB->dump();
     LB = Builder.CreateTrunc(LB, LongType, "polly.truncLB");
   }
@@ -226,12 +227,14 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     //}
   } else {
     // UB = Builder.CreateShl(UB, Builder.getInt32(2), "polly.par.var_arg.UBx4");
+    UB->dump();
     UB = Builder.CreateTrunc(UB, LongType, "polly.truncUB.vanilla");
     //UB = Builder.CreateShl(UB, Builder.getInt32(2), "polly.par.var_arg.UBx4");
-    UB = Builder.CreateMul(UB, NumberOfThreadsIncr, "polly.par.var_arg.UBx4");
+    UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, numThreads), "polly.truncUB.incr2");
+    UB = Builder.CreateMul(UB, multiplier, "polly.par.var_arg.UBx4");
     UB->dump();
-    //UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, 1), "polly.truncUB.incr2");
-    //UB = Builder.CreateAdd(UB, NumberOfThreads, "polly.truncUB.incr");
+    //UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, 10), "polly.truncUB.incr2");
+    //UB = Builder.CreateAdd(UB, multiplier, "polly.truncUB.incr");
     UB = Builder.CreateTrunc(UB, LongType, "polly.truncUB");
   }
 
@@ -247,8 +250,9 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     //}
   } else {
     printf("Truncating Stride!\n");
-    Stride = Builder.CreateTrunc(Stride, LongType, "polly.truncStride.vanilla");
-    Stride = Builder.CreateMul(Stride, NumberOfThreadsIncr, "polly.par.var_arg.Stridex4");
+    Stride->dump();
+    //Stride = Builder.CreateTrunc(Stride, LongType, "polly.truncStride.vanilla");
+    //Stride = Builder.CreateMul(Stride, NumberOfThreadsIncr, "polly.par.var_arg.Stridex4");
     Stride->dump();
     Stride = Builder.CreateTrunc(Stride, LongType, "polly.truncStride");
   }
@@ -520,23 +524,6 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
 
   printf("LLVM-IR createSubFn:\t 02.0\n");
 
-  /*
-  Function::arg_iterator AI = SubFn->arg_begin();
-  AI->dump();
-  AI++; // TODO: Find "better" solution
-  AI->dump();
-  AI++; // TODO: Find "better" solution
-  AI->dump();
-
-  UserContext = Builder.CreateBitCast(
-      &*AI, StructData->getType(), "polly.par.userContext");
-
-  printf("LLVM-IR createSubFn:\t 02.x\n");
-
-  extractValuesFromStruct(Data, StructData->getAllocatedType(), UserContext,
-                          Map);
-  */
-
   StructType *va_listTy = M->getTypeByName("va_list");
   StructType *va_listTyX64 = M->getTypeByName("__va_listX64");
 
@@ -551,23 +538,16 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
                             Builder.getInt8PtrTy(), Builder.getInt8PtrTy()};
 
     va_listTyX64 = StructType::create(M->getContext(), loc_members, "__va_listX64", false);
-      printf("LLVM-IR createSubFn:\t 02.0 -- Created __va_listX64\n");
   }
 
   //std::vector<Type *> types(1, Builder.getInt8PtrTy());
   Function *vaStart = Intrinsic::getDeclaration(M, Intrinsic::vastart);
   Function *vaEnd = Intrinsic::getDeclaration(M, Intrinsic::vaend);
 
-  printf("LLVM-IR createSubFn:\t 02.1\n");
-
   Value *dataPtr = Builder.CreateAlloca(va_listTyX64, nullptr, "polly.par.DATA");
-
-  printf("LLVM-IR createSubFn:\t 02.2\n");
   Value *data = Builder.CreateBitCast(dataPtr, Builder.getInt8PtrTy(), "polly.par.DATA.i8");
 
-  printf("LLVM-IR createSubFn:\t 02.4\n");
   Builder.CreateCall(vaStart, data);
-  printf("LLVM-IR createSubFn:\t 02.5\n");
 
   LB = Builder.CreateVAArg(data, Builder.getInt32Ty(), "polly.par.var_arg.LB");
   UB = Builder.CreateVAArg(data, Builder.getInt32Ty(), "polly.par.var_arg.UB");
@@ -576,9 +556,6 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
 
   Value *userContextPtr = Builder.CreateVAArg(data, Builder.getInt8PtrTy());
   userContextPtr->dump();
-
-
-  printf("LLVM-IR createSubFn:\t 02.6\n");
 
   UserContext = Builder.CreateBitCast(
       userContextPtr, StructData->getType(), "polly.par.userContext");
@@ -626,15 +603,9 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
 
   printf("LLVM-IR createSubFn:\t 02.5\n");
 
-  //Value *UB32 = Builder.CreateAlignedLoad(UBPtr, align);
-  //UB->dump();
-  //UB32->dump();
-
-  Value *selectCond = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT, UB, UB_adj, "polly.threadUB_slt_UB_");
+  Value *selectCond = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT, UB, UB_adj, "polly.threadUB_slt_adjUB");
   UB = Builder.CreateSelect(selectCond, UB, UB_adj);
   Builder.CreateAlignedStore(UB, UBPtr, align);
-
-  //Value *lowBound = Builder.CreateAlignedLoad(LBPtr, align);
 
   printf("LLVM-IR createSubFn:\t 02.6\n");
 
@@ -651,17 +622,9 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(Value *LB, Value *UB,
   // UB = Builder.CreateSub(UB, ConstantInt::get(LongType, 1), "polly.par.UBAdjusted");
   Builder.CreateBr(ExitBB);
 
-  // Value *loc, Value *global_tid,
-  // Value *pIsLast, Value *pLB,
-  // Value *pUB, Value *pStride
-
   printf("LLVM-IR createSubFn:\t 04\n");
 
-  // Builder.SetInsertPoint(&*--Builder.GetInsertPoint());
   Builder.SetInsertPoint(PreHeaderBB);
-
-  //UB = Builder.CreateSub(UB, ConstantInt::get(LongType, 1),
-  //                       "polly.par.UBAdjusted");
 
   Builder.CreateBr(CheckNextBB);
   Builder.SetInsertPoint(&*--Builder.GetInsertPoint());

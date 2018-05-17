@@ -634,7 +634,6 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
       ParallelLoopGen = new ParallelLoopGeneratorGNU(Builder, P, LI, DT, DL);
       break;
     case 1:
-      ValueUB->dump();
       printf("\nPolly-OMP-Flavor: LLVM.\n\n");
       ParallelLoopGen = new ParallelLoopGeneratorLLVM(Builder, P, LI, DT, DL);
       break;

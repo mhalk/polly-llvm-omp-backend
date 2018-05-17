@@ -91,6 +91,7 @@ public:
                             SetVector<Value *> &Values, ValueMapT &VMap,
                             BasicBlock::iterator *LoopBody);
   void createCallSpawnThreads(Value *srcLocation, Value *microtask,
+                              Value *LB, Value *UB, Value *Stride,
                               Value *SubFnParam);
   void createCallGetWorkItem(Value *loc, Value *global_tid,
                              Value *pIsLast, Value *pLB,
@@ -100,6 +101,10 @@ public:
   Value *createSubFn(Value *LB, Value *UB, Value *Stride, AllocaInst *Struct,
                      SetVector<Value *> UsedValues, ValueMapT &VMap,
                      Function **SubFn, Value *Location);
+
+  Value *createCallGlobalThreadNum(Value *srcLocation);
+  void createCallPushNumThreads(Value *srcLocation, Value *global_tid,
+                                Value *numThreads);
 
   Function *createSubFnDefinition();
 

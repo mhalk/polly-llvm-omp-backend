@@ -76,8 +76,8 @@ public:
   ParallelLoopGeneratorLLVM(PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
                         DominatorTree &DT, const DataLayout &DL)
       : ParallelLoopGenerator(Builder, P, LI, DT, DL),
-      LongType(Type::getIntNTy(Builder.getContext(),
-        ((DL.getPointerSizeInBits() > 32) ? 32 : DL.getPointerSizeInBits()))) {}
+      LongType(Type::getIntNTy(Builder.getContext(), DL.getPointerSizeInBits())) {}
+        //((DL.getPointerSizeInBits() > 32) ? 32 : DL.getPointerSizeInBits()))) {}
 
 /*
   Value *createLoop(Value *LowerBound, Value *UpperBound, Value *Stride,
@@ -98,9 +98,8 @@ public:
                              Value *pUB, Value *pStride);
   void createCallJoinThreads();
   void createCallCleanupThread(Value *srcLocation, Value *global_tid);
-  Value *createSubFn(Value *LB, Value *UB, Value *Stride, AllocaInst *Struct,
-                     SetVector<Value *> UsedValues, ValueMapT &VMap,
-                     Function **SubFn, Value *Location);
+  Value *createSubFn(AllocaInst *Struct, SetVector<Value *> UsedValues,
+                     ValueMapT &VMap, Function **SubFn, Value *Location);
 
   Value *createCallGlobalThreadNum(Value *srcLocation);
   void createCallPushNumThreads(Value *srcLocation, Value *global_tid,

@@ -630,11 +630,11 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
   switch (PollyOmpFlavor) {
     case 0:
     default:
-      printf("\nPolly-OMP-Flavor: GNU.\n\n");
+      printf("Polly-OMP-Flavor: GNU.\n");
       ParallelLoopGen = new ParallelLoopGeneratorGNU(Builder, P, LI, DT, DL);
       break;
     case 1:
-      printf("\nPolly-OMP-Flavor: LLVM.\n\n");
+      printf("Polly-OMP-Flavor: LLVM.\n");
       ParallelLoopGen = new ParallelLoopGeneratorLLVM(Builder, P, LI, DT, DL);
       break;
   }
@@ -678,11 +678,6 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
   isl_ast_node_free(For);
   isl_ast_expr_free(Iterator);
   isl_id_free(IteratorID);
-
-  freopen("/home/mhalk/ba/dump/moddump_ISLend.ll", "w", stderr);
-  Module *M = Builder.GetInsertBlock()->getParent()->getParent();
-  M->dump();
-  freopen("/dev/tty", "w", stderr);
 }
 
 void IslNodeBuilder::createFor(__isl_take isl_ast_node *For) {

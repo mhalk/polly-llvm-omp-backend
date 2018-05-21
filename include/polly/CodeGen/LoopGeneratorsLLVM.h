@@ -77,16 +77,7 @@ public:
                         DominatorTree &DT, const DataLayout &DL)
       : ParallelLoopGenerator(Builder, P, LI, DT, DL),
       LongType(Type::getIntNTy(Builder.getContext(), DL.getPointerSizeInBits())) {}
-        //((DL.getPointerSizeInBits() > 32) ? 32 : DL.getPointerSizeInBits()))) {}
 
-/*
-  Value *createLoop(Value *LowerBound, Value *UpperBound, Value *Stride,
-                    PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
-                    DominatorTree &DT, BasicBlock *&ExitBlock,
-                    ICmpInst::Predicate Predicate,
-                    ScopAnnotator *Annotator = NULL, bool Parallel = false,
-                    bool UseGuard = true);
-                    */
   Value *createParallelLoop(Value *LB, Value *UB, Value *Stride,
                             SetVector<Value *> &Values, ValueMapT &VMap,
                             BasicBlock::iterator *LoopBody);
@@ -96,7 +87,6 @@ public:
   void createCallGetWorkItem(Value *loc, Value *global_tid,
                              Value *pIsLast, Value *pLB,
                              Value *pUB, Value *pStride);
-  void createCallJoinThreads();
   void createCallCleanupThread(Value *srcLocation, Value *global_tid);
   Value *createSubFn(AllocaInst *Struct, SetVector<Value *> UsedValues,
                      ValueMapT &VMap, Function **SubFn, Value *Location);
@@ -106,6 +96,8 @@ public:
                                 Value *numThreads);
 
   Function *createSubFnDefinition();
+
+  GlobalVariable *createSourceLocation(Module *M);
 
 protected:
   /// The type of a "long" on this hardware used for backend calls.

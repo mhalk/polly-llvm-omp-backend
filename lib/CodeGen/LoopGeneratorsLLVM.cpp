@@ -41,11 +41,11 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   AllocaInst *Struct = storeValuesIntoStruct(UsedValues);
   GlobalValue *loc = createSourceLocation(M);
 
-  int numThreads = (PollyNumThreads <= 0) ? 4 : PollyNumThreads;
+  int numThreads = (PollyNumThreads > 0) ? PollyNumThreads : 4;
   numThreads = 4;
 
   if (LongType->getIntegerBitWidth() != 64) {
-    // Truncate the given 64bit integers
+    // Truncate the given 64bit integers, when LongType is smaller
     LB = Builder.CreateTrunc(LB, LongType, "polly.truncLB");
     UB = Builder.CreateTrunc(UB, LongType, "polly.truncUB");
     Stride = Builder.CreateTrunc(Stride, LongType, "polly.truncStride");
@@ -78,14 +78,12 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   return IV;
 }
 
-void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *_loc,
-                                                       Value *_microtask,
+void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *loc,
+                                                       Value *microtask,
                                                        Value *LB,
                                                        Value *UB,
                                                        Value *Stride,
                                                        Value *SubFnParam) {
-
-  // const std::string Name = "GOMP_parallel_loop_runtime_start";
   const std::string Name = "__kmpc_fork_call";
   Function *F = M->getFunction(Name);
 
@@ -111,7 +109,7 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *_loc,
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
-  Value *Args[] = {_loc, Builder.getInt32(4), _microtask,
+  Value *Args[] = {loc, Builder.getInt32(4), microtask,
                     LB, UB, Stride, SubFnParam};
 
   Builder.CreateCall(F, Args);
@@ -145,10 +143,9 @@ void ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *loc,
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
-  // Value *NumberOfThreads = Builder.getInt32(PollyNumThreads);
-  Value *Args[] = { loc, global_tid, Builder.getInt32(34), /* Static schedule */
-                    pIsLast, pLB, pUB, pStride, ConstantInt::get(LongType, 1),
-                    ConstantInt::get(LongType, 1) };
+  Value *Args[] = {loc, global_tid, Builder.getInt32(34), /* Static schedule */
+                   pIsLast, pLB, pUB, pStride, ConstantInt::get(LongType, 1),
+                   ConstantInt::get(LongType, 1) };
 
   Builder.CreateCall(F, Args);
 }
@@ -166,8 +163,7 @@ void ParallelLoopGeneratorLLVM::createCallCleanupThread(Value *loc, Value *id) {
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
-  // Value *NumberOfThreads = Builder.getInt32(PollyNumThreads);
-  Value *Args[] = { loc, id };
+  Value *Args[] = {loc, id};
 
   Builder.CreateCall(F, Args);
 }
@@ -211,7 +207,6 @@ Value *ParallelLoopGeneratorLLVM::createCallGlobalThreadNum(Value *loc) {
    }
 
    Value *Args[] = {loc};
-
    Value *retVal = Builder.CreateCall(F, Args);
 
    return retVal;
@@ -284,12 +279,15 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   Value *data = Builder.CreateBitCast(dataPtr, Builder.getInt8PtrTy(),
                                       "polly.par.DATA.i8");
 
+  // Load the variable arguments of __kmpc_fork_call
   Builder.CreateCall(vaStart, data);
 
   LB = Builder.CreateVAArg(data, LongType, "polly.par.var_arg.LB");
   UB = Builder.CreateVAArg(data, LongType, "polly.par.var_arg.UB");
   Stride = Builder.CreateVAArg(data, LongType, "polly.par.var_arg.Stride");
   Value *userContextPtr = Builder.CreateVAArg(data, Builder.getInt8PtrTy());
+
+  Builder.CreateCall(vaEnd, data);
 
   UserContext = Builder.CreateBitCast(
       userContextPtr, StructData->getType(), "polly.par.userContext");
@@ -309,7 +307,7 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   Value *UB_adj = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
                                     "polly.indvar.UBAdjusted");
 
-  // insert __kmpc_for_static_init_4 HERE
+  // Start __kmpc_for_static_init to get the thread-specific params (LB and UB)
   createCallGetWorkItem(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
 
   Builder.SetInsertPoint(HeaderBB);
@@ -322,13 +320,13 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   UB = Builder.CreateSelect(selectCond, UB, UB_adj);
   Builder.CreateAlignedStore(UB, UBPtr, align);
 
-  Builder.CreateCall(vaEnd, data);
-
   Value *hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLE,
                                            LB, UB, "polly.hasIteration");
   Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
 
-  // Add code to check if another set of iterations will be executed.
+  // FIXME : CheckNextBB is theoretically not needed anymore.
+  // However, it will be removed by other passes and is needed to
+  // work with the existing functions.
   Builder.SetInsertPoint(CheckNextBB);
   Builder.CreateBr(ExitBB);
 

@@ -51,13 +51,13 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     Stride = Builder.CreateTrunc(Stride, LongType, "polly.truncStride");
   }
 
+  Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt8PtrTy(),
+                                            "polly.par.userContext");
+
   BasicBlock::iterator BeforeLoop = Builder.GetInsertPoint();
   Value *IV = createSubFn(Struct, UsedValues, Map, &SubFn, loc);
   *LoopBody = Builder.GetInsertPoint();
   Builder.SetInsertPoint(&*BeforeLoop);
-
-  Value *SubFnParam = Builder.CreateBitCast(Struct, Builder.getInt8PtrTy(),
-                                            "polly.par.userContext");
 
   // Add one as the upper bound provided by openmp is a < comparison
   // whereas the codegenForSequential function creates a <= comparison.
@@ -86,19 +86,19 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *loc,
                                                        Value *SubFnParam) {
   const std::string Name = "__kmpc_fork_call";
   Function *F = M->getFunction(Name);
+  Type *Kmpc_MicroTy = M->getTypeByName("kmpc_micro");
+
+  if (!Kmpc_MicroTy) {
+     // void (*kmpc_micro)(kmp_int32 *global_tid, kmp_int32 *bound_tid,...)
+     Type *MicroParams[] = {Builder.getInt32Ty()->getPointerTo(),
+                            Builder.getInt32Ty()->getPointerTo()};
+
+     Kmpc_MicroTy = FunctionType::get(Builder.getVoidTy(), MicroParams, true);
+  }
 
   // If F is not available, declare it.
   if (!F) {
     StructType *identTy = M->getTypeByName("struct.ident_t");
-    Type *Kmpc_MicroTy = M->getTypeByName("kmpc_micro");
-
-    if (!Kmpc_MicroTy) {
-       // void (*kmpc_micro)(kmp_int32 *global_tid, kmp_int32 *bound_tid,...)
-       Type *MicroParams[] = {Builder.getInt32Ty()->getPointerTo(),
-                              Builder.getInt32Ty()->getPointerTo()};
-
-       Kmpc_MicroTy = FunctionType::get(Builder.getVoidTy(), MicroParams, true);
-    }
 
     GlobalValue::LinkageTypes Linkage = Function::ExternalLinkage;
     Type *Params[] = {identTy->getPointerTo(),
@@ -109,11 +109,13 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *loc,
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
-  Value *Args[] = {loc, Builder.getInt32(4), microtask,
+  Value *task = Builder.CreatePointerBitCastOrAddrSpaceCast(microtask,
+    Kmpc_MicroTy->getPointerTo());
+
+  Value *Args[] = {loc, Builder.getInt32(4), task,
                     LB, UB, Stride, SubFnParam};
 
   Builder.CreateCall(F, Args);
-
 }
 
 void ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *loc,
@@ -143,9 +145,11 @@ void ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *loc,
     F = Function::Create(Ty, Linkage, Name, M);
   }
 
-  Value *Args[] = {loc, global_tid, Builder.getInt32(34), /* Static schedule */
-                   pIsLast, pLB, pUB, pStride, ConstantInt::get(LongType, 1),
-                   ConstantInt::get(LongType, 1) };
+  // Static schedule
+  Value *schedule = Builder.getInt32(34);
+
+  Value *Args[] = {loc, global_tid, schedule, pIsLast, pLB, pUB, pStride,
+                   ConstantInt::get(LongType, 1), ConstantInt::get(LongType, 1)};
 
   Builder.CreateCall(F, Args);
 }
@@ -217,7 +221,7 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
                   Function **SubFnPtr, Value *Location) {
   BasicBlock *PrevBB, *HeaderBB, *ExitBB, *CheckNextBB, *PreHeaderBB, *AfterBB;
   Value *LBPtr, *UBPtr, *UserContext, *IDPtr, *ID, *IV, *pIsLast, *pStride;
-  Value *LB, *UB, *Stride;
+  Value *LB, *UB, *Stride, *Shared;
 
   Function *SubFn = createSubFnDefinition();
   LLVMContext &Context = SubFn->getContext();
@@ -241,56 +245,23 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   // Fill up basic block HeaderBB.
   Builder.SetInsertPoint(HeaderBB);
 
-  // First argument holds global thread id
-  IDPtr = &*SubFn->arg_begin();
-
   LBPtr = Builder.CreateAlloca(LongType, nullptr, "polly.par.LBPtr");
   UBPtr = Builder.CreateAlloca(LongType, nullptr, "polly.par.UBPtr");
   pIsLast = Builder.CreateAlloca(Builder.getInt32Ty(), nullptr,
                                  "polly.par.lastIterPtr");
   pStride = Builder.CreateAlloca(LongType, nullptr, "polly.par.StridePtr");
 
-
-  StructType *va_listTy = M->getTypeByName("struct.__va_list");
-
-  // If the va_list StructType is not available, declare it.
-  // On x64 architecture: va_list = type { i32, i32, i8*, i8* }
-  // otherwise: va_list = type { i8* }
-  if(!va_listTy) {
-    std::vector<Type *> va_list_members;
-
-    if (is64bitArch) {
-      va_list_members.push_back(Builder.getInt32Ty());
-      va_list_members.push_back(Builder.getInt32Ty());
-      va_list_members.push_back(Builder.getInt8PtrTy());
-      va_list_members.push_back(Builder.getInt8PtrTy());
-    } else {
-      va_list_members.push_back(Builder.getInt8PtrTy());
-    }
-
-    va_listTy = StructType::create(M->getContext(), va_list_members,
-                                   "struct.__va_list", false);
-  }
-
-  Function *vaStart = Intrinsic::getDeclaration(M, Intrinsic::vastart);
-  Function *vaEnd = Intrinsic::getDeclaration(M, Intrinsic::vaend);
-
-  Value *dataPtr = Builder.CreateAlloca(va_listTy, nullptr, "polly.par.DATA");
-  Value *data = Builder.CreateBitCast(dataPtr, Builder.getInt8PtrTy(),
-                                      "polly.par.DATA.i8");
-
-  // Load the variable arguments of __kmpc_fork_call
-  Builder.CreateCall(vaStart, data);
-
-  LB = Builder.CreateVAArg(data, LongType, "polly.par.var_arg.LB");
-  UB = Builder.CreateVAArg(data, LongType, "polly.par.var_arg.UB");
-  Stride = Builder.CreateVAArg(data, LongType, "polly.par.var_arg.Stride");
-  Value *userContextPtr = Builder.CreateVAArg(data, Builder.getInt8PtrTy());
-
-  Builder.CreateCall(vaEnd, data);
+  // Get iterator for retrieving the parameters
+  Function::arg_iterator AI = SubFn->arg_begin();
+  // First argument holds global thread id. Then move iterator to LB.
+  IDPtr = &*AI; std::advance(AI, 2);
+  LB = &*AI; std::advance(AI, 1);
+  UB = &*AI; std::advance(AI, 1);
+  Stride = &*AI; std::advance(AI, 1);
+  Shared = &*AI;
 
   UserContext = Builder.CreateBitCast(
-      userContextPtr, StructData->getType(), "polly.par.userContext");
+    Shared, StructData->getType(), "polly.par.userContext");
 
   extractValuesFromStruct(Data, StructData->getAllocatedType(), UserContext,
                           Map);
@@ -352,9 +323,10 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
 
 Function *ParallelLoopGeneratorLLVM::createSubFnDefinition() {
   Function *F = Builder.GetInsertBlock()->getParent();
-  Type *MicroParams[] = {Builder.getInt32Ty()->getPointerTo(),
-                         Builder.getInt32Ty()->getPointerTo()};
-  FunctionType *FT = FunctionType::get(Builder.getVoidTy(), MicroParams, true);
+  Type *Params[] = {Builder.getInt32Ty()->getPointerTo(),
+                         Builder.getInt32Ty()->getPointerTo(),
+                         LongType, LongType, LongType, Builder.getInt8PtrTy()};
+  FunctionType *FT = FunctionType::get(Builder.getVoidTy(), Params, false);
   Function *SubFn = Function::Create(FT, Function::InternalLinkage,
                                      F->getName() + "_polly_subfn", M);
 
@@ -369,9 +341,12 @@ Function *ParallelLoopGeneratorLLVM::createSubFnDefinition() {
 
   // Name function parameters
   Function::arg_iterator AI = SubFn->arg_begin();
-  AI->setName("polly.kmpc.global_tid");
-  ++AI;
-  AI->setName("polly.kmpc.bound_tid");
+  AI->setName("polly.kmpc.global_tid"); std::advance(AI, 1);
+  AI->setName("polly.kmpc.bound_tid"); std::advance(AI, 1);
+  AI->setName("polly.kmpc.lb"); std::advance(AI, 1);
+  AI->setName("polly.kmpc.ub"); std::advance(AI, 1);
+  AI->setName("polly.kmpc.inc"); std::advance(AI, 1);
+  AI->setName("polly.kmpc.shared");
 
   return SubFn;
 }

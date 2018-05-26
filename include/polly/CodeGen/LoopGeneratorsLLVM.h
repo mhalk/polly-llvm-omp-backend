@@ -94,6 +94,10 @@ public:
   Value *createCallGlobalThreadNum(Value *srcLocation);
   void createCallPushNumThreads(Value *srcLocation, Value *global_tid,
                                 Value *numThreads);
+  void createCallDispatchInit(Value *loc, Value *global_tid, Value *Sched,
+                              Value *LB, Value *UB, Value *Inc, Value *Chunk);
+  Value *createCallDispatchNext(Value *loc, Value *global_tid, Value *pIsLast,
+                                Value *pLB, Value *pUB, Value *pInc);
 
   Function *createSubFnDefinition();
 

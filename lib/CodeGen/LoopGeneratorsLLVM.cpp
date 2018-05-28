@@ -33,6 +33,11 @@ static cl::opt<int>
                     cl::desc("Number of threads to use (0 = auto)"), cl::Hidden,
                     cl::init(0));
 
+static cl::opt<int>
+    PollyScheduling("polly-llvm-scheduling",
+                    cl::desc("Int representation of the KMPC scheduling"), cl::Hidden,
+                    cl::init(35));
+
 Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     Value *LB, Value *UB, Value *Stride, SetVector<Value *> &UsedValues,
     ValueMapT &Map, BasicBlock::iterator *LoopBody) {
@@ -278,7 +283,15 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
                                     "polly.indvar.UBAdjusted");
 
-  Sched = Builder.getInt32(35);
+  if (PollyScheduling == 35) {
+    printf("Scheduling Strategy : DYNAMIC\n");
+  } else if (PollyScheduling == 36) {
+    printf("Scheduling Strategy : GUIDED\n");
+  } else {
+    printf("Scheduling Strategy : ???\n");
+  }
+
+  Sched = Builder.getInt32(PollyScheduling);
   Chunk = ConstantInt::get(LongType, 1);
   createCallDispatchInit(Location, ID, Sched, LB, UB, Stride, Chunk);
   workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);

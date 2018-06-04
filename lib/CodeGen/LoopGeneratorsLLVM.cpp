@@ -38,6 +38,11 @@ static cl::opt<int>
                     cl::desc("Int representation of the KMPC scheduling"), cl::Hidden,
                     cl::init(35));
 
+static cl::opt<int>
+    PollyChunkSize("polly-llvm-chunksize",
+                    cl::desc("Chunksize to use"), cl::Hidden,
+                    cl::init(1));
+
 Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     Value *LB, Value *UB, Value *Stride, SetVector<Value *> &UsedValues,
     ValueMapT &Map, BasicBlock::iterator *LoopBody) {
@@ -47,7 +52,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   GlobalValue *loc = createSourceLocation(M);
 
   int numThreads = (PollyNumThreads > 0) ? PollyNumThreads : 4;
-  numThreads = 4;
+  numThreads = 1;
 
   if (LongType->getIntegerBitWidth() != 64) {
     // Truncate the given 64bit integers, when LongType is smaller
@@ -291,8 +296,16 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
     printf("Scheduling Strategy : ???\n");
   }
 
+  if (PollyChunkSize <= 0) {
+    PollyChunkSize = 1;
+  }
+
+  int chunksize = PollyChunkSize;
+
+  printf("ChunkSize : %d\n", chunksize);
+
   Sched = Builder.getInt32(PollyScheduling);
-  Chunk = ConstantInt::get(LongType, 1);
+  Chunk = ConstantInt::get(LongType, chunksize);
   createCallDispatchInit(Location, ID, Sched, LB, UB, Stride, Chunk);
   workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
 
@@ -323,7 +336,6 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
 
   // Add code to terminate this subfunction.
   Builder.SetInsertPoint(ExitBB);
-  createCallCleanupThread(Location, ID);
   Builder.CreateRetVoid();
 
   Builder.SetInsertPoint(&*LoopBody);

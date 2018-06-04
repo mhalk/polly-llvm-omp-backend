@@ -52,7 +52,6 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   GlobalValue *loc = createSourceLocation(M);
 
   int numThreads = (PollyNumThreads > 0) ? PollyNumThreads : 4;
-  numThreads = 1;
 
   if (LongType->getIntegerBitWidth() != 64) {
     // Truncate the given 64bit integers, when LongType is smaller

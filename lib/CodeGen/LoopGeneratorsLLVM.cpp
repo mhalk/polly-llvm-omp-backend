@@ -36,7 +36,7 @@ static cl::opt<int>
 static cl::opt<int>
     PollyScheduling("polly-llvm-scheduling",
                     cl::desc("Int representation of the KMPC scheduling"), cl::Hidden,
-                    cl::init(35));
+                    cl::init(34));
 
 static cl::opt<int>
     PollyChunkSize("polly-llvm-chunksize",
@@ -253,7 +253,8 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
                   Function **SubFnPtr, Value *Location) {
   BasicBlock *PrevBB, *HeaderBB, *ExitBB, *CheckNextBB, *PreHeaderBB, *AfterBB;
   Value *LBPtr, *UBPtr, *UserContext, *IDPtr, *ID, *IV, *pIsLast, *pStride;
-  Value *Sched, *LB, *UB, *Stride, *Shared, *Chunk, *workLeft, *hasIteration;
+  Value *Sched, *LB, *UB, *Stride, *Shared, *Chunk, *hasWork, *hasIteration;
+  Value *adjUB;
 
   Function *SubFn = createSubFnDefinition();
   LLVMContext &Context = SubFn->getContext();
@@ -307,7 +308,7 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
 
   // Subtract one as the upper bound provided by openmp is a < comparison
   // whereas the codegenForSequential function creates a <= comparison.
-  UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
+  adjUB = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
                                     "polly.indvar.UBAdjusted");
 
   if (PollyChunkSize <= 0) {
@@ -321,27 +322,45 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   Sched = Builder.getInt32(PollyScheduling);
   Chunk = ConstantInt::get(LongType, chunksize);
   if (ScheduleType) {
+    UB = adjUB;
     createCallDispatchInit(Location, ID, Sched, LB, UB, Stride, Chunk);
-    workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
+    hasWork = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
     hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_EQ,
-                          workLeft, Builder.getInt32(1), "polly.hasIteration");
+                          hasWork, Builder.getInt32(1), "polly.hasIteration");
     Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
 
     Builder.SetInsertPoint(CheckNextBB);
-    workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
+    hasWork = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
     hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_EQ,
-                          workLeft, Builder.getInt32(1), "polly.workLeft");
+                          hasWork, Builder.getInt32(1), "polly.hasWork");
     Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
 
     Builder.SetInsertPoint(PreHeaderBB);
     LB = Builder.CreateAlignedLoad(LBPtr, align, "polly.indvar.init");
     UB = Builder.CreateAlignedLoad(UBPtr, align, "polly.indvar.UB");
-
+    Builder.CreateBr(CheckNextBB);
   } else {
+    createCallStaticInit(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
 
+    LB = Builder.CreateAlignedLoad(LBPtr, align, "polly.indvar.init");
+    UB = Builder.CreateAlignedLoad(UBPtr, align, "polly.indvar.UB");
+
+    hasWork = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLT,
+                                  UB, adjUB, "polly.UB_slt_adjUB");
+
+    UB = Builder.CreateSelect(hasWork, UB, adjUB);
+    Builder.CreateAlignedStore(UB, UBPtr, align);
+
+    Value *hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLE,
+                                             LB, UB, "polly.hasIteration");
+    Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
+
+    Builder.SetInsertPoint(CheckNextBB);
+    Builder.CreateBr(ExitBB);
+
+    Builder.SetInsertPoint(PreHeaderBB);
+    Builder.CreateBr(CheckNextBB);
   }
-
-  Builder.CreateBr(CheckNextBB);
 
   Builder.SetInsertPoint(&*--Builder.GetInsertPoint());
 

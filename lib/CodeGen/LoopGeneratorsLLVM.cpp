@@ -53,6 +53,29 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 
   int numThreads = (PollyNumThreads > 0) ? PollyNumThreads : 4;
 
+  // Find out which init/next functions have to used
+  switch (PollyScheduling) {
+  	default:
+  		PollyScheduling = 34;
+  	case 33: // kmp_sch_static_chunked
+  	case 34: // kmp_sch_static
+  	case 40: // kmp_sch_static_greedy
+  	case 41: // kmp_sch_static_balanced
+  	case 44: // kmp_sch_static_steal
+  	case 45: // kmp_sch_static_balanced_chunked
+  		ScheduleType = 0;
+      printf("Scheduling Strategy : STATIC (%d)\n", (int) PollyScheduling);
+  		break;
+  	case 35: // kmp_sch_dynamic_chunked
+  	case 36: // kmp_sch_guided_chunked
+  	case 39: // kmp_sch_trapezoidal
+  	case 42: // kmp_sch_guided_iterative_chunked
+  	case 43: // kmp_sch_guided_analytical_chunked
+  		ScheduleType = 1;
+      printf("Scheduling Strategy : DYNAMIC (%d)\n", (int) PollyScheduling);
+  		break;
+  }
+
   if (LongType->getIntegerBitWidth() != 64) {
     // Truncate the given 64bit integers, when LongType is smaller
     LB = Builder.CreateTrunc(LB, LongType, "polly.truncLB");
@@ -127,7 +150,7 @@ void ParallelLoopGeneratorLLVM::createCallSpawnThreads(Value *loc,
   Builder.CreateCall(F, Args);
 }
 
-void ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *loc,
+void ParallelLoopGeneratorLLVM::createCallStaticInit(Value *loc,
                                                    Value *global_tid,
                                                    Value *pIsLast, Value *pLB,
                                                    Value *pUB, Value *pStride) {
@@ -163,7 +186,7 @@ void ParallelLoopGeneratorLLVM::createCallGetWorkItem(Value *loc,
   Builder.CreateCall(F, Args);
 }
 
-void ParallelLoopGeneratorLLVM::createCallCleanupThread(Value *loc, Value *id) {
+void ParallelLoopGeneratorLLVM::createCallStaticFini(Value *loc, Value *id) {
   const std::string Name = "__kmpc_for_static_fini";
   Function *F = M->getFunction(Name);
   StructType *identTy = M->getTypeByName("struct.ident_t");
@@ -287,14 +310,6 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
                                     "polly.indvar.UBAdjusted");
 
-  if (PollyScheduling == 35) {
-    printf("Scheduling Strategy : DYNAMIC\n");
-  } else if (PollyScheduling == 36) {
-    printf("Scheduling Strategy : GUIDED\n");
-  } else {
-    printf("Scheduling Strategy : ???\n");
-  }
-
   if (PollyChunkSize <= 0) {
     PollyChunkSize = 1;
   }
@@ -305,25 +320,26 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
 
   Sched = Builder.getInt32(PollyScheduling);
   Chunk = ConstantInt::get(LongType, chunksize);
-  createCallDispatchInit(Location, ID, Sched, LB, UB, Stride, Chunk);
-  workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
+  if (ScheduleType) {
+    createCallDispatchInit(Location, ID, Sched, LB, UB, Stride, Chunk);
+    workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
+    hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_EQ,
+                          workLeft, Builder.getInt32(1), "polly.hasIteration");
+    Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
 
-  Builder.SetInsertPoint(HeaderBB);
+    Builder.SetInsertPoint(CheckNextBB);
+    workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
+    hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_EQ,
+                          workLeft, Builder.getInt32(1), "polly.workLeft");
+    Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
 
-  hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_EQ,
-                        workLeft, Builder.getInt32(1), "polly.hasIteration");
+    Builder.SetInsertPoint(PreHeaderBB);
+    LB = Builder.CreateAlignedLoad(LBPtr, align, "polly.indvar.init");
+    UB = Builder.CreateAlignedLoad(UBPtr, align, "polly.indvar.UB");
 
-  Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
+  } else {
 
-  Builder.SetInsertPoint(CheckNextBB);
-  workLeft = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
-  hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_EQ,
-                        workLeft, Builder.getInt32(1), "polly.hasIteration");
-  Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
-
-  Builder.SetInsertPoint(PreHeaderBB);
-  LB = Builder.CreateAlignedLoad(LBPtr, align, "polly.indvar.init");
-  UB = Builder.CreateAlignedLoad(UBPtr, align, "polly.indvar.UB");
+  }
 
   Builder.CreateBr(CheckNextBB);
 
@@ -335,6 +351,7 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
 
   // Add code to terminate this subfunction.
   Builder.SetInsertPoint(ExitBB);
+  if (ScheduleType == 0) { createCallStaticFini(Location, ID); }
   Builder.CreateRetVoid();
 
   Builder.SetInsertPoint(&*LoopBody);

@@ -84,10 +84,10 @@ public:
   void createCallSpawnThreads(Value *srcLocation, Value *microtask,
                               Value *LB, Value *UB, Value *Stride,
                               Value *SubFnParam);
-  void createCallGetWorkItem(Value *loc, Value *global_tid,
+  void createCallStaticInit(Value *loc, Value *global_tid,
                              Value *pIsLast, Value *pLB,
                              Value *pUB, Value *pStride);
-  void createCallCleanupThread(Value *srcLocation, Value *global_tid);
+  void createCallStaticFini(Value *srcLocation, Value *global_tid);
   Value *createSubFn(AllocaInst *Struct, SetVector<Value *> UsedValues,
                      ValueMapT &VMap, Function **SubFn, Value *Location);
 
@@ -106,6 +106,9 @@ public:
 protected:
   /// The type of a "long" on this hardware used for backend calls.
   Type *LongType;
+
+  /// The type of the schedule, used to execute the microtasks (0=STATIC, 1=DYN)
+  int ScheduleType;
 
 };
 } // end namespace polly

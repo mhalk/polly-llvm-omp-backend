@@ -30,18 +30,18 @@ using namespace polly;
 
 static cl::opt<int>
     PollyNumThreads("polly-num-threads-llvm",
-                    cl::desc("Number of threads to use (0 = auto)"), cl::Hidden,
-                    cl::init(0));
+                    cl::desc("Number of threads to use (0 = auto)"),
+                    cl::Hidden, cl::init(0));
 
 static cl::opt<int>
     PollyScheduling("polly-llvm-scheduling",
-                    cl::desc("Int representation of the KMPC scheduling"), cl::Hidden,
-                    cl::init(34));
+                    cl::desc("Int representation of the KMPC scheduling"),
+                    cl::Hidden, cl::init(34));
 
 static cl::opt<int>
     PollyChunkSize("polly-llvm-chunksize",
-                    cl::desc("Chunksize to use"), cl::Hidden,
-                    cl::init(1));
+                    cl::desc("Chunksize to use by the KMPC runtime calls"),
+                    cl::Hidden, cl::init(1));
 
 Value *ParallelLoopGeneratorLLVM::createParallelLoop(
     Value *LB, Value *UB, Value *Stride, SetVector<Value *> &UsedValues,
@@ -53,7 +53,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
 
   int numThreads = (PollyNumThreads > 0) ? PollyNumThreads : 4;
 
-  // Find out which init/next functions have to used
+  // Find out which _init/_next/_fini functions to use
   switch (PollyScheduling) {
   	default:
   		PollyScheduling = 34;
@@ -64,7 +64,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   	case 44: // kmp_sch_static_steal
   	case 45: // kmp_sch_static_balanced_chunked
   		ScheduleType = 0;
-      printf("Scheduling Strategy : STATIC (%d)\n", (int) PollyScheduling);
+      printf("Scheduling Strategy : STATIC  (%d)\n", (int) PollyScheduling);
   		break;
   	case 35: // kmp_sch_dynamic_chunked
   	case 36: // kmp_sch_guided_chunked
@@ -260,6 +260,9 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   LLVMContext &Context = SubFn->getContext();
   bool is64bitArch = (LongType->getIntegerBitWidth() == 64);
   int align = (is64bitArch) ? 8 : 4;
+  int chunksize = (PollyChunkSize > 0) ? PollyChunkSize : 1;
+
+  printf("          ChunkSize :           %d\n", chunksize);
 
   // Store the previous basic block.
   PrevBB = Builder.GetInsertBlock();
@@ -311,17 +314,11 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   adjUB = Builder.CreateAdd(UB, ConstantInt::get(LongType, -1),
                                     "polly.indvar.UBAdjusted");
 
-  if (PollyChunkSize <= 0) {
-    PollyChunkSize = 1;
-  }
-
-  int chunksize = PollyChunkSize;
-
-  printf("ChunkSize : %d\n", chunksize);
-
   Sched = Builder.getInt32(PollyScheduling);
   Chunk = ConstantInt::get(LongType, chunksize);
+
   if (ScheduleType) {
+    // "DYNAMIC" scheduling types are handled below
     UB = adjUB;
     createCallDispatchInit(Location, ID, Sched, LB, UB, Stride, Chunk);
     hasWork = createCallDispatchNext(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
@@ -340,6 +337,7 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
     UB = Builder.CreateAlignedLoad(UBPtr, align, "polly.indvar.UB");
     Builder.CreateBr(CheckNextBB);
   } else {
+    // "STATIC" scheduling types are handled below
     createCallStaticInit(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
 
     LB = Builder.CreateAlignedLoad(LBPtr, align, "polly.indvar.init");
@@ -351,7 +349,7 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
     UB = Builder.CreateSelect(hasWork, UB, adjUB);
     Builder.CreateAlignedStore(UB, UBPtr, align);
 
-    Value *hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLE,
+    hasIteration = Builder.CreateICmp(llvm::CmpInst::Predicate::ICMP_SLE,
                                              LB, UB, "polly.hasIteration");
     Builder.CreateCondBr(hasIteration, PreHeaderBB, ExitBB);
 
@@ -409,6 +407,7 @@ Function *ParallelLoopGeneratorLLVM::createSubFnDefinition() {
   return SubFn;
 }
 
+// FIXME: This function only creates a location dummy.
 GlobalVariable *ParallelLoopGeneratorLLVM::createSourceLocation(Module *M) {
   const std::string Name = ".loc.dummy";
   GlobalVariable *dummy_src_loc = M->getGlobalVariable(Name);

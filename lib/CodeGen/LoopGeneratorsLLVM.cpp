@@ -1,4 +1,4 @@
-//===------ LoopGenerators.cpp -  IR helper to create loops ---------------===//
+//===---- LoopGeneratorsLLVM.cpp -  IR helper to create loops -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -23,7 +23,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-// #include "clang/CodeGen/CGOpenMPRuntime.h"
 
 using namespace llvm;
 using namespace polly;
@@ -64,7 +63,6 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   	case 44: // kmp_sch_static_steal
   	case 45: // kmp_sch_static_balanced_chunked
   		ScheduleType = 0;
-      printf("Scheduling Strategy : STATIC  (%d)\n", (int) PollyScheduling);
   		break;
   	case 35: // kmp_sch_dynamic_chunked
   	case 36: // kmp_sch_guided_chunked
@@ -72,7 +70,6 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   	case 42: // kmp_sch_guided_iterative_chunked
   	case 43: // kmp_sch_guided_analytical_chunked
   		ScheduleType = 1;
-      printf("Scheduling Strategy : DYNAMIC (%d)\n", (int) PollyScheduling);
   		break;
   }
 
@@ -261,8 +258,6 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
   bool is64bitArch = (LongType->getIntegerBitWidth() == 64);
   int align = (is64bitArch) ? 8 : 4;
   int chunksize = (PollyChunkSize > 0) ? PollyChunkSize : 1;
-
-  printf("          ChunkSize :           %d\n", chunksize);
 
   // Store the previous basic block.
   PrevBB = Builder.GetInsertBlock();

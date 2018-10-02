@@ -15,6 +15,9 @@ vectorization, or they can be used to do software pipelining.
 Alternative LLVM OpenMP backend
 -------------------------------
 
+Information:
+  This implementation is based on "release_40" of Polly.
+
 Usage:
   The CL switch "polly-omp-flavor" allows to choose the OpenMP-backend.
     0: GNU OpenMP (default)

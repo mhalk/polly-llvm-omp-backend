@@ -24,7 +24,7 @@ using namespace llvm;
 using namespace polly;
 
 static cl::opt<int>
-    PollyNumThreads("polly-num-threads",
+    PollyNumThreads("polly-gomp-num-threads",
                     cl::desc("Number of threads to use (0 = auto)"), cl::Hidden,
                     cl::init(0));
 

@@ -28,17 +28,17 @@ using namespace llvm;
 using namespace polly;
 
 static cl::opt<int>
-    PollyNumThreads("polly-num-threads-llvm",
+    PollyNumThreads("polly-lomp-num-threads",
                     cl::desc("Number of threads to use (0 = auto)"),
                     cl::Hidden, cl::init(0));
 
 static cl::opt<int>
-    PollyScheduling("polly-llvm-scheduling",
+    PollyScheduling("polly-lomp-scheduling",
                     cl::desc("Int representation of the KMPC scheduling"),
                     cl::Hidden, cl::init(34));
 
 static cl::opt<int>
-    PollyChunkSize("polly-llvm-chunksize",
+    PollyChunkSize("polly-lomp-chunksize",
                     cl::desc("Chunksize to use by the KMPC runtime calls"),
                     cl::Hidden, cl::init(1));
 
@@ -50,7 +50,7 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   AllocaInst *Struct = storeValuesIntoStruct(UsedValues);
   GlobalValue *loc = createSourceLocation(M);
 
-  int numThreads = (PollyNumThreads > 0) ? PollyNumThreads : 4;
+  // int numThreads = (PollyNumThreads > 0) ? PollyNumThreads : 0;
 
   // Find out which _init/_next/_fini functions to use
   switch (PollyScheduling) {
@@ -93,8 +93,10 @@ Value *ParallelLoopGeneratorLLVM::createParallelLoop(
   UB = Builder.CreateAdd(UB, ConstantInt::get(LongType, 1));
 
   // Inform OpenMP runtime about the number of threads
-  Value *gtid = createCallGlobalThreadNum(loc);
-  createCallPushNumThreads(loc, gtid, Builder.getInt32(numThreads));
+  if (PollyNumThreads > 0) {
+    Value *gtid = createCallGlobalThreadNum(loc);
+    createCallPushNumThreads(loc, gtid, Builder.getInt32(PollyNumThreads));
+  }
 
   // Tell the runtime we start a parallel loop
   createCallSpawnThreads(loc, SubFn, LB, UB, Stride, SubFnParam);
@@ -275,7 +277,6 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
 
   // Fill up basic block HeaderBB.
   Builder.SetInsertPoint(HeaderBB);
-
   LBPtr = Builder.CreateAlloca(LongType, nullptr, "polly.par.LBPtr");
   UBPtr = Builder.CreateAlloca(LongType, nullptr, "polly.par.UBPtr");
   pIsLast = Builder.CreateAlloca(Builder.getInt32Ty(), nullptr,
@@ -330,7 +331,6 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
     Builder.SetInsertPoint(PreHeaderBB);
     LB = Builder.CreateAlignedLoad(LBPtr, align, "polly.indvar.init");
     UB = Builder.CreateAlignedLoad(UBPtr, align, "polly.indvar.UB");
-    Builder.CreateBr(CheckNextBB);
   } else {
     // "STATIC" scheduling types are handled below
     createCallStaticInit(Location, ID, pIsLast, LBPtr, UBPtr, pStride);
@@ -352,13 +352,13 @@ Value *ParallelLoopGeneratorLLVM::createSubFn(AllocaInst *StructData,
     Builder.CreateBr(ExitBB);
 
     Builder.SetInsertPoint(PreHeaderBB);
-    Builder.CreateBr(CheckNextBB);
   }
 
+  Builder.CreateBr(CheckNextBB);
   Builder.SetInsertPoint(&*--Builder.GetInsertPoint());
-
   IV = createLoop(LB, UB, Stride, Builder, P, LI, DT, AfterBB,
-                  ICmpInst::ICMP_SLE, nullptr, true, false);
+                  ICmpInst::ICMP_SLE, nullptr, true, /* UseGuard */ false);
+
   BasicBlock::iterator LoopBody = Builder.GetInsertPoint();
 
   // Add code to terminate this subfunction.

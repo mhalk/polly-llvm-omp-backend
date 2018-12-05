@@ -167,7 +167,7 @@ public:
                               Value *UB, Value *Stride);
 
   /// Create a runtime library call to join the worker threads.
-  virtual void createCallJoinThreads();
+  void createCallJoinThreads();
 
   /// Create a runtime library call to get the next work item.
   ///

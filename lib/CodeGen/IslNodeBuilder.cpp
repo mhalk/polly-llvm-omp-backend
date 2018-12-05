@@ -78,8 +78,8 @@ static cl::opt<int> PollyTargetFirstLevelCacheLineSize(
     cl::desc("The size of the first level cache line size specified in bytes."),
     cl::Hidden, cl::init(64), cl::ZeroOrMore, cl::cat(PollyCategory));
 
-static cl::opt<int> PollyOmpFlavor("polly-omp-flavor",
-    cl::desc("Choose which OpenMP library shall be used. (0=GCC, 1=LLVM)"),
+static cl::opt<int> PollyOmpFlavor("polly-omp-backend",
+    cl::desc("Choose which OpenMP library shall be used. (0=GNU, 1=LLVM)"),
     cl::Hidden, cl::init(0), cl::ZeroOrMore, cl::cat(PollyCategory));
 
 __isl_give isl_ast_expr *
